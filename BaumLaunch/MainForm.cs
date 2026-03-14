@@ -317,23 +317,42 @@ public sealed class MainForm : Form
     private void TitleBar_Paint(object? sender, PaintEventArgs e)
     {
         var g = e.Graphics;
-        // Small icon — package box
-        int ix = 12, iy = 10, sz = 20;
-        using var iconBrush = new SolidBrush(AppTheme.Accent);
-        using var iconPen   = new Pen(AppTheme.Accent, 1.5f);
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        // Box body
-        g.DrawRectangle(iconPen, ix, iy + 6, sz, sz - 6);
-        // Box lid
-        g.DrawPolygon(iconPen, new Point[] {
-            new(ix - 2, iy + 7), new(ix + sz / 2, iy), new(ix + sz + 2, iy + 7)
+
+        // ── Baum (tree) + launch icon ────────────────────────────────────────
+        int ox = 10, oy = 5;   // origin offset within title bar
+
+        using var treeBrush  = new SolidBrush(AppTheme.Success);
+        using var trunkBrush = new SolidBrush(Color.FromArgb(150, 90, 30));
+        using var flameBrush = new SolidBrush(Color.FromArgb(255, 150, 30));
+        using var glowBrush  = new SolidBrush(Color.FromArgb(80, 255, 180, 30));
+
+        // Top pine layer
+        g.FillPolygon(treeBrush, new PointF[]
+        {
+            new(ox + 9, oy),
+            new(ox + 5, oy + 9),
+            new(ox + 13, oy + 9),
         });
-        // Center stripe
-        g.DrawLine(iconPen, ix + sz / 2, iy, ix + sz / 2, iy + 6);
+        // Bottom pine layer (wider)
+        g.FillPolygon(treeBrush, new PointF[]
+        {
+            new(ox + 9, oy + 6),
+            new(ox + 2, oy + 16),
+            new(ox + 16, oy + 16),
+        });
+        // Trunk
+        g.FillRectangle(trunkBrush, ox + 7, oy + 16, 4, 5);
+        // Launch flame glow (soft halo behind flames)
+        g.FillEllipse(glowBrush, ox + 4, oy + 19, 10, 7);
+        // Launch flames — three oval jets below trunk
+        g.FillEllipse(flameBrush, ox + 5,  oy + 21, 3, 5);
+        g.FillEllipse(flameBrush, ox + 7,  oy + 21, 4, 6);
+        g.FillEllipse(flameBrush, ox + 10, oy + 21, 3, 5);
 
         // Title text
         using var titleBrush = new SolidBrush(AppTheme.TextPrimary);
-        g.DrawString("BaumLaunch", AppTheme.FontHeader, titleBrush, ix + sz + 10, 12);
+        g.DrawString("BaumLaunch", AppTheme.FontHeader, titleBrush, ox + 22, 12);
     }
 
     private void TitleBar_MouseDown(object? sender, MouseEventArgs e)
@@ -424,11 +443,20 @@ public sealed class MainForm : Form
             line => lines.Add(line));
 
         entry.Status = ok ? AppStatus.Updated : AppStatus.Failed;
-        if (ok) entry.InstalledVersion = entry.AvailableVersion ?? entry.InstalledVersion;
+        if (ok)
+        {
+            // For fresh installs AvailableVersion is null; use a non-null placeholder so
+            // IsInstalled flips to true immediately while the background re-check runs.
+            entry.InstalledVersion = entry.AvailableVersion ?? entry.InstalledVersion ?? "installed";
+        }
         RefreshRow(entry);
 
-        // Trigger a full re-check in background
-        _ = Task.Delay(2000).ContinueWith(async _ => await SafeInvoke(RefreshStatusAsync));
+        // Trigger a full re-check after a short delay to let winget register the install
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(4000);
+            await SafeInvoke(RefreshStatusAsync);
+        });
     }
 
     private async Task RunBatchAsync(bool updatesOnly, bool selectedOnly = false)
@@ -602,19 +630,23 @@ public sealed class MainForm : Form
             g.Clear(Color.Transparent);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            var boxColor = hasUpdates ? AppTheme.Warning : AppTheme.Success;
-            using var brush = new SolidBrush(boxColor);
-            using var pen   = new Pen(boxColor, 1f);
+            var treeColor  = hasUpdates ? AppTheme.Warning : AppTheme.Success;
+            var flameColor = hasUpdates ? Color.FromArgb(255, 120, 30) : Color.FromArgb(255, 160, 40);
 
-            // Package box icon
-            // Body
-            g.FillRectangle(brush, 2, 7, 12, 8);
-            // Lid triangle
-            var lid = new Point[] { new(1, 8), new(8, 2), new(15, 8) };
-            g.FillPolygon(brush, lid);
-            // Belt stripe (darker)
-            using var darkBrush = new SolidBrush(Color.FromArgb(80, 0, 0, 0));
-            g.FillRectangle(darkBrush, 6, 7, 4, 8);
+            using var treeBrush  = new SolidBrush(treeColor);
+            using var trunkBrush = new SolidBrush(Color.FromArgb(140, 80, 30));
+            using var flameBrush = new SolidBrush(flameColor);
+
+            // Pine tree — top layer (narrow upper triangle)
+            g.FillPolygon(treeBrush, new PointF[] { new(8, 1), new(5, 7), new(11, 7) });
+            // Pine tree — bottom layer (wider lower triangle)
+            g.FillPolygon(treeBrush, new PointF[] { new(8, 4), new(2, 10), new(14, 10) });
+            // Trunk
+            g.FillRectangle(trunkBrush, 6, 10, 4, 3);
+            // Launch flames — three small flame teardrop shapes below trunk
+            g.FillEllipse(flameBrush, 6,  13, 2, 3);   // left jet
+            g.FillEllipse(flameBrush, 7,  13, 2, 3);   // center jet
+            g.FillEllipse(flameBrush, 9,  13, 2, 3);   // right jet (overlap center)
         }
         return Icon.FromHandle(bmp.GetHicon());
     }
