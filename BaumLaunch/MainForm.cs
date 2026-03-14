@@ -12,6 +12,7 @@ public sealed class MainForm : Form
     private bool   _isChecking      = false;
     private DateTime _lastChecked   = DateTime.MinValue;
     private bool   _exitRequested   = false;
+    private AppSettings _settings   = AppSettings.Load();
 
     // ── Timers ───────────────────────────────────────────────────────────────
     private readonly System.Windows.Forms.Timer _checkTimer;
@@ -40,6 +41,7 @@ public sealed class MainForm : Form
     private readonly Button _btnExport;
     private readonly Button _btnImport;
     private readonly Button _btnCheckNow;
+    private readonly Button _btnSettings;
 
     // ── Filter buttons ────────────────────────────────────────────────────────
     private readonly List<Button> _filterButtons = new();
@@ -204,6 +206,7 @@ public sealed class MainForm : Form
         _btnExport         = MakeToolbarButton("Export Profile", AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnImport         = MakeToolbarButton("Import Profile", AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnCheckNow       = MakeToolbarButton("Check Now",      AppTheme.Accent,  AppTheme.TextPrimary);
+        _btnSettings       = MakeToolbarButton("⚙ Settings",    AppTheme.BgCard,  AppTheme.TextSecondary);
 
         _btnSelectAll.Click       += (_, _) => { foreach (var e in _entries) e.IsSelected = true;  RebuildRows(); };
         _btnDeselectAll.Click     += (_, _) => { foreach (var e in _entries) e.IsSelected = false; RebuildRows(); };
@@ -213,6 +216,7 @@ public sealed class MainForm : Form
         _btnExport.Click          += ExportProfile_Click;
         _btnImport.Click          += ImportProfile_Click;
         _btnCheckNow.Click        += async (_, _) => await RefreshStatusAsync();
+        _btnSettings.Click        += (_, _) => OpenSettings();
 
         // Layout bottom bar left-to-right
         LayoutBottomBar();
@@ -245,6 +249,8 @@ public sealed class MainForm : Form
         ctxMenu.Items.Add(new ToolStripSeparator());
         ctxMenu.Items.Add("Check for App Update",null, async (_, _) => await CheckForAppUpdateAsync(force: true));
         ctxMenu.Items.Add(new ToolStripSeparator());
+        ctxMenu.Items.Add("Settings",            null, (_, _) => { ShowMainWindow(); OpenSettings(); });
+        ctxMenu.Items.Add(new ToolStripSeparator());
         ctxMenu.Items.Add("Exit",                null, (_, _) => { _exitRequested = true; Application.Exit(); });
 
         _trayIcon = new NotifyIcon
@@ -257,13 +263,13 @@ public sealed class MainForm : Form
         _trayIcon.DoubleClick += (_, _) => ShowMainWindow();
 
         // ── Timer ────────────────────────────────────────────────────────────
-        _checkTimer = new System.Windows.Forms.Timer { Interval = 6 * 60 * 60 * 1000 }; // 6 hours
+        _checkTimer = new System.Windows.Forms.Timer { Interval = SettingsToTimerInterval(_settings) };
         _checkTimer.Tick += async (_, _) =>
         {
             await RefreshStatusAsync();
             _ = CheckForAppUpdateAsync();
         };
-        _checkTimer.Start();
+        if (_settings.UpdateCheckHours > 0) _checkTimer.Start();
 
         // Activate correct filter button
         UpdateFilterButtons();
@@ -271,7 +277,7 @@ public sealed class MainForm : Form
         Load += async (_, _) =>
         {
             RebuildRows();
-            await RefreshStatusAsync();
+            if (_settings.CheckOnStartup) await RefreshStatusAsync();
             // Delay app-update check slightly so the main window finishes loading first
             _ = Task.Delay(3000).ContinueWith(async _ => await SafeInvoke(() => CheckForAppUpdateAsync()));
         };
@@ -830,17 +836,20 @@ public sealed class MainForm : Form
         PlaceBtn(_btnExport,          ref bx, by, gap);
         PlaceBtn(_btnImport,          ref bx, by, gap);
 
-        // Check Now on right side
+        // Settings + Check Now pinned to the right
+        int rbx = _bottomBar.Width - 8;
+        _btnSettings.Size     = new Size(94, 30);
+        _btnSettings.Location = new Point(rbx - _btnSettings.Width, 10);
+
         _btnCheckNow.Size     = new Size(94, 30);
-        _btnCheckNow.Location = new Point(_bottomBar.Width - 102, 10);
-        _btnCheckNow.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
+        _btnCheckNow.Location = new Point(_btnSettings.Left - 6 - _btnCheckNow.Width, 10);
 
         if (!_bottomBar.Controls.Contains(_btnSelectAll))
         {
             _bottomBar.Controls.AddRange(new Control[] {
                 _btnSelectAll, _btnDeselectAll,
                 _btnInstallSelected, _btnUpdateSelected, _btnUpdateAll,
-                _btnExport, _btnImport, _btnCheckNow
+                _btnExport, _btnImport, _btnCheckNow, _btnSettings
             });
         }
     }
@@ -894,6 +903,28 @@ public sealed class MainForm : Form
             _checkTimer.Dispose();
         }
     }
+
+    // ── Settings ─────────────────────────────────────────────────────────────────
+    private void OpenSettings()
+    {
+        using var dlg = new SettingsForm(_settings);
+        dlg.SettingsSaved += (_, _) => ApplySettings();
+        dlg.ShowDialog(this);
+    }
+
+    private void ApplySettings()
+    {
+        // Re-configure the update check timer
+        _checkTimer.Stop();
+        if (_settings.UpdateCheckHours > 0)
+        {
+            _checkTimer.Interval = SettingsToTimerInterval(_settings);
+            _checkTimer.Start();
+        }
+    }
+
+    private static int SettingsToTimerInterval(AppSettings s) =>
+        Math.Max(s.UpdateCheckHours, 1) * 60 * 60 * 1000;
 
     // ── App self-update ──────────────────────────────────────────────────────────
     private async Task CheckForAppUpdateAsync(bool force = false)
