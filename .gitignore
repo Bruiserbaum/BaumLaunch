@@ -1,0 +1,43 @@
+## .NET / C# gitignore
+
+# Build outputs
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Publish output
+publish/
+
+# NuGet packages
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# Installer output
+installer/output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# User profile exports
+*.json
+!**/*.csproj
+!**/launchSettings.json
