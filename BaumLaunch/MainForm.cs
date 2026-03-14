@@ -15,6 +15,7 @@ public sealed class MainForm : Form
 
     // ── Timers ───────────────────────────────────────────────────────────────
     private readonly System.Windows.Forms.Timer _checkTimer;
+    private bool _appUpdateCheckInProgress = false;
 
     // ── Tray ─────────────────────────────────────────────────────────────────
     private readonly NotifyIcon _trayIcon;
@@ -220,12 +221,14 @@ public sealed class MainForm : Form
         ctxMenu.BackColor = AppTheme.BgPanel;
         ctxMenu.ForeColor = AppTheme.TextPrimary;
         ctxMenu.Font      = AppTheme.FontBody;
-        ctxMenu.Items.Add("Open BaumLaunch",    null, (_, _) => ShowMainWindow());
+        ctxMenu.Items.Add("Open BaumLaunch",      null, (_, _) => ShowMainWindow());
         ctxMenu.Items.Add(new ToolStripSeparator());
-        ctxMenu.Items.Add("Check for Updates",  null, async (_, _) => await RefreshStatusAsync());
-        ctxMenu.Items.Add("Update All",         null, async (_, _) => await RunBatchAsync(true, selectedOnly: false));
+        ctxMenu.Items.Add("Check for Updates",   null, async (_, _) => await RefreshStatusAsync());
+        ctxMenu.Items.Add("Update All",          null, async (_, _) => await RunBatchAsync(true, selectedOnly: false));
         ctxMenu.Items.Add(new ToolStripSeparator());
-        ctxMenu.Items.Add("Exit",               null, (_, _) => { _exitRequested = true; Application.Exit(); });
+        ctxMenu.Items.Add("Check for App Update",null, async (_, _) => await CheckForAppUpdateAsync(force: true));
+        ctxMenu.Items.Add(new ToolStripSeparator());
+        ctxMenu.Items.Add("Exit",                null, (_, _) => { _exitRequested = true; Application.Exit(); });
 
         _trayIcon = new NotifyIcon
         {
@@ -238,7 +241,11 @@ public sealed class MainForm : Form
 
         // ── Timer ────────────────────────────────────────────────────────────
         _checkTimer = new System.Windows.Forms.Timer { Interval = 6 * 60 * 60 * 1000 }; // 6 hours
-        _checkTimer.Tick += async (_, _) => await RefreshStatusAsync();
+        _checkTimer.Tick += async (_, _) =>
+        {
+            await RefreshStatusAsync();
+            _ = CheckForAppUpdateAsync();
+        };
         _checkTimer.Start();
 
         // Activate correct filter button
@@ -248,6 +255,8 @@ public sealed class MainForm : Form
         {
             RebuildRows();
             await RefreshStatusAsync();
+            // Delay app-update check slightly so the main window finishes loading first
+            _ = Task.Delay(3000).ContinueWith(async _ => await SafeInvoke(() => CheckForAppUpdateAsync()));
         };
 
         FormClosing += MainForm_FormClosing;
@@ -808,6 +817,37 @@ public sealed class MainForm : Form
             _trayIcon.Dispose();
             _checkTimer.Stop();
             _checkTimer.Dispose();
+        }
+    }
+
+    // ── App self-update ──────────────────────────────────────────────────────────
+    private async Task CheckForAppUpdateAsync(bool force = false)
+    {
+        if (_appUpdateCheckInProgress) return;
+        _appUpdateCheckInProgress = true;
+
+        try
+        {
+            var result = await UpdateService.CheckAsync();
+            if (result == null)
+            {
+                if (force)
+                    SafeInvoke(() => _trayIcon.ShowBalloonTip(2000, "BaumLaunch", "Already up to date.", ToolTipIcon.Info));
+                return;
+            }
+
+            var (version, url) = result.Value;
+            SafeInvoke(() =>
+                _trayIcon.ShowBalloonTip(4000, "BaumLaunch Update",
+                    $"Updating to v{version} — the app will restart automatically.", ToolTipIcon.Info));
+
+            // Small pause so the user sees the balloon before the window disappears
+            await Task.Delay(2000);
+            await UpdateService.DownloadAndInstallAsync(version, url);
+        }
+        finally
+        {
+            _appUpdateCheckInProgress = false;
         }
     }
 
