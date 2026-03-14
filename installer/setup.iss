@@ -1,6 +1,6 @@
 #define AppName      "BaumLaunch"
-#define AppVersion   "1.6.0"
-#define AppVersionFull "1.6.0"
+#define AppVersion   "1.17.0"
+#define AppVersionFull "1.17.0"
 #define AppPublisher "Bnuss"
 #define AppExeName   "BaumLaunch.exe"
 #define PublishDir   "..\BaumLaunch\bin\Release\net8.0-windows10.0.22621.0\win-x64\publish"
@@ -32,11 +32,7 @@ Name: "startup"; Description: "Start BaumLaunch with Windows"; GroupDescription:
 
 [Files]
 Source: "{#PublishDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
-Source: "{#PublishDir}\BaumLaunch.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#PublishDir}\BaumLaunch.deps.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#PublishDir}\BaumLaunch.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#PublishDir}\Microsoft.Windows.SDK.NET.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#PublishDir}\WinRT.Runtime.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"

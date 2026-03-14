@@ -9,6 +9,11 @@ public sealed class SettingsForm : Form
     private readonly CheckBox    _chkStartup;
     private readonly CheckBox    _chkCheckOnStartup;
     private readonly ComboBox    _cboFrequency;
+    private readonly CheckBox    _chkAutoUpdate;
+    private readonly ComboBox    _cboScheduleType;
+    private readonly ComboBox    _cboDayPicker;
+    private readonly ComboBox    _cboHour;
+    private readonly ComboBox    _cboMinute;
     private readonly Label       _lblVersion;
     private readonly Label       _lblUpdateStatus;
     private readonly Button      _btnCheckUpdate;
@@ -22,8 +27,8 @@ public sealed class SettingsForm : Form
 
         // ── Form ──────────────────────────────────────────────────────────────
         Text            = "Settings";
-        Size            = new Size(460, 480);
-        MinimumSize     = new Size(420, 460);
+        Size            = new Size(460, 660);
+        MinimumSize     = new Size(420, 580);
         FormBorderStyle = FormBorderStyle.None;
         BackColor       = AppTheme.BgMain;
         StartPosition   = FormStartPosition.CenterParent;
@@ -71,14 +76,15 @@ public sealed class SettingsForm : Form
             BackColor  = AppTheme.BgMain,
         };
 
+        const int lx = 20;   // left margin for all body controls
         int y = 16;
 
         // ── ABOUT section ─────────────────────────────────────────────────────
-        body.Controls.Add(SectionLabel("ABOUT", ref y));
+        body.Controls.Add(SectionLabel("ABOUT", ref y, lx));
 
         var card = new Panel
         {
-            Location  = new Point(0, y),
+            Location  = new Point(lx, y),
             Size      = new Size(380, 84),
             BackColor = AppTheme.BgPanel,
         };
@@ -129,26 +135,26 @@ public sealed class SettingsForm : Form
         y += card.Height + 20;
 
         // ── STARTUP section ───────────────────────────────────────────────────
-        body.Controls.Add(SectionLabel("STARTUP", ref y));
+        body.Controls.Add(SectionLabel("STARTUP", ref y, lx));
 
-        _chkStartup = DarkCheckBox("Start BaumLaunch with Windows", y);
+        _chkStartup = DarkCheckBox("Start BaumLaunch with Windows", y, lx);
         _chkStartup.Checked = AppSettings.GetStartWithWindows();
         body.Controls.Add(_chkStartup);
         y += 30;
 
-        _chkCheckOnStartup = DarkCheckBox("Check for package updates on startup", y);
+        _chkCheckOnStartup = DarkCheckBox("Check for package updates on startup", y, lx);
         _chkCheckOnStartup.Checked = _settings.CheckOnStartup;
         body.Controls.Add(_chkCheckOnStartup);
         y += 36;
 
         // ── UPDATE CHECKS section ─────────────────────────────────────────────
-        body.Controls.Add(SectionLabel("PACKAGE UPDATE CHECKS", ref y));
+        body.Controls.Add(SectionLabel("PACKAGE UPDATE CHECKS", ref y, lx));
 
         body.Controls.Add(new Label
         {
             AutoSize  = false,
             Size      = new Size(200, 20),
-            Location  = new Point(0, y),
+            Location  = new Point(lx, y),
             Font      = AppTheme.FontBody,
             ForeColor = AppTheme.TextSecondary,
             BackColor = Color.Transparent,
@@ -158,7 +164,7 @@ public sealed class SettingsForm : Form
 
         _cboFrequency = new ComboBox
         {
-            Location      = new Point(0, y),
+            Location      = new Point(lx, y),
             Size          = new Size(200, 26),
             Font          = AppTheme.FontBody,
             FlatStyle     = FlatStyle.Flat,
@@ -178,6 +184,117 @@ public sealed class SettingsForm : Form
         _cboFrequency.SelectedIndex = HoursToIndex(_settings.UpdateCheckHours);
         body.Controls.Add(_cboFrequency);
         y += 40;
+
+        // ── SCHEDULED AUTO-UPDATE section ─────────────────────────────────────
+        body.Controls.Add(SectionLabel("SCHEDULED AUTO-UPDATE", ref y, lx));
+
+        _chkAutoUpdate = DarkCheckBox("Enable scheduled silent auto-update", y, lx);
+        _chkAutoUpdate.Checked = _settings.AutoUpdateEnabled;
+        body.Controls.Add(_chkAutoUpdate);
+        y += 30;
+
+        body.Controls.Add(new Label
+        {
+            AutoSize  = false,
+            Size      = new Size(80, 20),
+            Location  = new Point(lx, y + 2),
+            Font      = AppTheme.FontBody,
+            ForeColor = AppTheme.TextSecondary,
+            BackColor = Color.Transparent,
+            Text      = "Schedule:",
+        });
+        _cboScheduleType = new ComboBox
+        {
+            Location      = new Point(lx + 84, y),
+            Size          = new Size(120, 26),
+            Font          = AppTheme.FontBody,
+            FlatStyle     = FlatStyle.Flat,
+            BackColor     = AppTheme.BgCard,
+            ForeColor     = AppTheme.TextPrimary,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        _cboScheduleType.Items.AddRange(new object[] { "Weekly", "Monthly" });
+        _cboScheduleType.SelectedIndex = _settings.AutoUpdateSchedule == "Monthly" ? 1 : 0;
+        body.Controls.Add(_cboScheduleType);
+        y += 32;
+
+        body.Controls.Add(new Label
+        {
+            AutoSize  = false,
+            Size      = new Size(80, 20),
+            Location  = new Point(lx, y + 2),
+            Font      = AppTheme.FontBody,
+            ForeColor = AppTheme.TextSecondary,
+            BackColor = Color.Transparent,
+            Text      = "Day:",
+        });
+        _cboDayPicker = new ComboBox
+        {
+            Location      = new Point(lx + 84, y),
+            Size          = new Size(160, 26),
+            Font          = AppTheme.FontBody,
+            FlatStyle     = FlatStyle.Flat,
+            BackColor     = AppTheme.BgCard,
+            ForeColor     = AppTheme.TextPrimary,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        body.Controls.Add(_cboDayPicker);
+        y += 32;
+
+        body.Controls.Add(new Label
+        {
+            AutoSize  = false,
+            Size      = new Size(80, 20),
+            Location  = new Point(lx, y + 2),
+            Font      = AppTheme.FontBody,
+            ForeColor = AppTheme.TextSecondary,
+            BackColor = Color.Transparent,
+            Text      = "Time:",
+        });
+        _cboHour = new ComboBox
+        {
+            Location      = new Point(lx + 84, y),
+            Size          = new Size(72, 26),
+            Font          = AppTheme.FontBody,
+            FlatStyle     = FlatStyle.Flat,
+            BackColor     = AppTheme.BgCard,
+            ForeColor     = AppTheme.TextPrimary,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        for (int h = 0; h < 24; h++) _cboHour.Items.Add(h.ToString("D2") + "h");
+        _cboHour.SelectedIndex = Math.Max(0, Math.Min(23, _settings.AutoUpdateHour));
+
+        body.Controls.Add(new Label
+        {
+            AutoSize  = false,
+            Size      = new Size(16, 20),
+            Location  = new Point(lx + 84 + 76, y + 2),
+            Font      = AppTheme.FontBody,
+            ForeColor = AppTheme.TextSecondary,
+            BackColor = Color.Transparent,
+            Text      = ":",
+            TextAlign = ContentAlignment.MiddleCenter,
+        });
+
+        _cboMinute = new ComboBox
+        {
+            Location      = new Point(lx + 84 + 96, y),
+            Size          = new Size(72, 26),
+            Font          = AppTheme.FontBody,
+            FlatStyle     = FlatStyle.Flat,
+            BackColor     = AppTheme.BgCard,
+            ForeColor     = AppTheme.TextPrimary,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        for (int m = 0; m < 60; m += 5) _cboMinute.Items.Add(m.ToString("D2") + "m");
+        _cboMinute.SelectedIndex = Math.Max(0, _settings.AutoUpdateMinute / 5);
+
+        body.Controls.Add(_cboHour);
+        body.Controls.Add(_cboMinute);
+        y += 40;
+
+        PopulateDayPicker();
+        _cboScheduleType.SelectedIndexChanged += (_, _) => PopulateDayPicker();
 
         // ── Bottom bar ────────────────────────────────────────────────────────
         var bottomBar = new Panel
@@ -263,6 +380,16 @@ public sealed class SettingsForm : Form
         _settings.StartWithWindows = _chkStartup.Checked;
         _settings.CheckOnStartup   = _chkCheckOnStartup.Checked;
         _settings.UpdateCheckHours = IndexToHours(_cboFrequency.SelectedIndex);
+
+        _settings.AutoUpdateEnabled  = _chkAutoUpdate.Checked;
+        _settings.AutoUpdateSchedule = _cboScheduleType.SelectedItem?.ToString() ?? "Weekly";
+        if (_settings.AutoUpdateSchedule == "Monthly")
+            _settings.AutoUpdateDayOfMonth = _cboDayPicker.SelectedIndex + 1;
+        else
+            _settings.AutoUpdateDayOfWeek = _cboDayPicker.SelectedIndex;
+        _settings.AutoUpdateHour   = _cboHour.SelectedIndex;
+        _settings.AutoUpdateMinute = _cboMinute.SelectedIndex * 5;
+
         _settings.Save();
         SettingsSaved?.Invoke(this, EventArgs.Empty);
         Close();
@@ -270,13 +397,30 @@ public sealed class SettingsForm : Form
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static Label SectionLabel(string text, ref int y)
+    private void PopulateDayPicker()
+    {
+        _cboDayPicker.Items.Clear();
+        if (_cboScheduleType.SelectedItem?.ToString() == "Monthly")
+        {
+            for (int d = 1; d <= 28; d++)
+                _cboDayPicker.Items.Add($"Day {d}");
+            _cboDayPicker.SelectedIndex = Math.Max(0, Math.Min(27, _settings.AutoUpdateDayOfMonth - 1));
+        }
+        else
+        {
+            _cboDayPicker.Items.AddRange(new object[]
+                { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" });
+            _cboDayPicker.SelectedIndex = Math.Max(0, Math.Min(6, _settings.AutoUpdateDayOfWeek));
+        }
+    }
+
+    private static Label SectionLabel(string text, ref int y, int lx = 0)
     {
         var lbl = new Label
         {
             AutoSize  = false,
             Size      = new Size(380, 18),
-            Location  = new Point(0, y),
+            Location  = new Point(lx, y),
             Font      = new Font("Segoe UI", 8f, FontStyle.Bold),
             ForeColor = AppTheme.TextMuted,
             BackColor = Color.Transparent,
@@ -286,11 +430,11 @@ public sealed class SettingsForm : Form
         return lbl;
     }
 
-    private static CheckBox DarkCheckBox(string text, int y) => new()
+    private static CheckBox DarkCheckBox(string text, int y, int lx = 0) => new()
     {
         AutoSize  = false,
         Size      = new Size(360, 24),
-        Location  = new Point(0, y),
+        Location  = new Point(lx, y),
         Font      = AppTheme.FontBody,
         ForeColor = AppTheme.TextSecondary,
         BackColor = Color.Transparent,

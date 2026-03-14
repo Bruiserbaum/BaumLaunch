@@ -16,6 +16,8 @@ public sealed class MainForm : Form
 
     // ── Timers ───────────────────────────────────────────────────────────────
     private readonly System.Windows.Forms.Timer _checkTimer;
+    private readonly System.Windows.Forms.Timer _scheduleTimer;
+    private DateTime _lastScheduledRun = DateTime.MinValue;
     private bool _appUpdateCheckInProgress = false;
 
     // ── Tray ─────────────────────────────────────────────────────────────────
@@ -24,6 +26,7 @@ public sealed class MainForm : Form
     // ── UI panels ────────────────────────────────────────────────────────────
     private readonly Panel      _titleBar;
     private readonly Panel      _filterBar;
+    private readonly Panel      _searchBar;
     private readonly Panel      _statusBar;
     private readonly Panel      _scrollPanel;
     private readonly Panel      _bottomBar;
@@ -43,8 +46,10 @@ public sealed class MainForm : Form
     private readonly Button _btnCheckNow;
     private readonly Button _btnSettings;
 
-    // ── Filter buttons ────────────────────────────────────────────────────────
+    // ── Filter buttons & search ───────────────────────────────────────────────
     private readonly List<Button> _filterButtons = new();
+    private TextBox? _searchBox;
+    private string   _searchFilter = "";
 
     // ── Window drag state ────────────────────────────────────────────────────
     private Point _dragStart;
@@ -54,8 +59,13 @@ public sealed class MainForm : Form
     private Panel?       _logOverlay;
     private RichTextBox? _logBox;
 
-    public MainForm()
+    // ── Startup mode ─────────────────────────────────────────────────────────
+    private readonly bool _startMinimized;
+
+    public MainForm(bool startMinimized = false)
     {
+        _startMinimized = startMinimized;
+
         // ── Form setup ──────────────────────────────────────────────────────
         Text            = "BaumLaunch";
         Size            = new Size(980, 680);
@@ -121,19 +131,20 @@ public sealed class MainForm : Form
             e.Graphics.DrawLine(pen, 0, _filterBar.Height - 1, _filterBar.Width, _filterBar.Height - 1);
         };
 
-        string[] categories = { "All", "AI Tools", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools" };
+        string[] categories = { "All", "AI Tools", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools", "WinGet Updates" };
         int bx = 6;
         foreach (var cat in categories)
         {
+            bool isUpdatesTab = cat == "WinGet Updates";
             var btn = new Button
             {
-                Text      = cat,
+                Text      = isUpdatesTab ? "⬆ Updates" : cat,
                 AutoSize  = false,
-                Size      = new Size(TextRenderer.MeasureText(cat, AppTheme.FontSmall).Width + 22, 28),
+                Size      = new Size(TextRenderer.MeasureText(isUpdatesTab ? "⬆ Updates" : cat, AppTheme.FontSmall).Width + 22, 28),
                 Location  = new Point(bx, 5),
                 Font      = AppTheme.FontSmall,
                 FlatStyle = FlatStyle.Flat,
-                ForeColor = AppTheme.TextSecondary,
+                ForeColor = isUpdatesTab ? AppTheme.Accent : AppTheme.TextSecondary,
                 BackColor = Color.Transparent,
                 Cursor    = Cursors.Hand,
                 Tag       = cat,
@@ -145,6 +156,63 @@ public sealed class MainForm : Form
             _filterBar.Controls.Add(btn);
             bx += btn.Width + 2;
         }
+
+        // ── Search bar (dedicated row below filter tabs) ─────────────────────
+        _searchBar = new Panel
+        {
+            Dock      = DockStyle.Top,
+            Height    = 34,
+            BackColor = AppTheme.BgPanel,
+        };
+        _searchBar.Paint += (_, e) =>
+        {
+            using var pen = new Pen(AppTheme.Border, 1);
+            e.Graphics.DrawLine(pen, 0, _searchBar.Height - 1, _searchBar.Width, _searchBar.Height - 1);
+        };
+
+        _searchBox = new TextBox
+        {
+            Size        = new Size(240, 22),
+            Font        = AppTheme.FontSmall,
+            BackColor   = AppTheme.BgCard,
+            ForeColor   = AppTheme.TextSecondary,
+            BorderStyle = BorderStyle.None,
+            Text        = "Search apps...",
+        };
+        var searchPanel = new Panel
+        {
+            Size      = new Size(246, 26),
+            BackColor = AppTheme.BgCard,
+            Anchor    = AnchorStyles.Top | AnchorStyles.Right,
+        };
+        searchPanel.Paint += (_, e) =>
+        {
+            using var pen = new Pen(AppTheme.Border, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, searchPanel.Width - 1, searchPanel.Height - 1);
+        };
+        _searchBox.Location = new Point(6, 2);
+        searchPanel.Controls.Add(_searchBox);
+        _searchBar.Controls.Add(searchPanel);
+        void PositionSearchBox() =>
+            searchPanel.Location = new Point(_searchBar.Width - searchPanel.Width - 8,
+                                             (_searchBar.Height - searchPanel.Height) / 2);
+        PositionSearchBox();
+        _searchBar.SizeChanged += (_, _) => PositionSearchBox();
+
+        // Placeholder text behaviour
+        _searchBox.GotFocus += (_, _) =>
+        {
+            if (_searchBox.Text == "Search apps...") { _searchBox.Text = ""; _searchBox.ForeColor = AppTheme.TextPrimary; }
+        };
+        _searchBox.LostFocus += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(_searchBox.Text)) { _searchBox.Text = "Search apps..."; _searchBox.ForeColor = AppTheme.TextSecondary; }
+        };
+        _searchBox.TextChanged += (_, _) =>
+        {
+            _searchFilter = _searchBox.Text == "Search apps..." ? "" : _searchBox.Text.Trim();
+            RebuildRows();
+        };
 
         // ── Status bar ──────────────────────────────────────────────────────
         _statusBar = new Panel
@@ -201,8 +269,8 @@ public sealed class MainForm : Form
         _btnSelectAll      = MakeToolbarButton("Select All",     AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnDeselectAll    = MakeToolbarButton("Deselect All",   AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnInstallSelected = MakeToolbarButton("Install Selected", AppTheme.Accent, AppTheme.TextPrimary);
-        _btnUpdateSelected = MakeToolbarButton("Update Selected", AppTheme.Warning, Color.FromArgb(30, 30, 30));
-        _btnUpdateAll      = MakeToolbarButton("Update All (0)", AppTheme.Warning, Color.FromArgb(30, 30, 30));
+        _btnUpdateSelected  = MakeToolbarButton("Update Selected",  AppTheme.Accent, AppTheme.TextPrimary);
+        _btnUpdateAll       = MakeToolbarButton("Update All (0)",   AppTheme.Accent, AppTheme.TextPrimary);
         _btnExport         = MakeToolbarButton("Export Profile", AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnImport         = MakeToolbarButton("Import Profile", AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnCheckNow       = MakeToolbarButton("Check Now",      AppTheme.Accent,  AppTheme.TextPrimary);
@@ -234,6 +302,7 @@ public sealed class MainForm : Form
         Controls.Add(_scrollPanel);
         Controls.Add(_bottomBar);
         Controls.Add(_statusBar);
+        Controls.Add(_searchBar);
         Controls.Add(_filterBar);
         Controls.Add(_titleBar);
 
@@ -253,10 +322,14 @@ public sealed class MainForm : Form
         ctxMenu.Items.Add(new ToolStripSeparator());
         ctxMenu.Items.Add("Exit",                null, (_, _) => { _exitRequested = true; Application.Exit(); });
 
+        // Use the same generated icon everywhere: tray, taskbar, alt-tab, title bar
+        var appIcon = GenerateTrayIcon(false);
+        this.Icon   = appIcon;
+
         _trayIcon = new NotifyIcon
         {
             Text        = "BaumLaunch",
-            Icon        = GenerateTrayIcon(false),
+            Icon        = appIcon,
             ContextMenuStrip = ctxMenu,
             Visible     = true,
         };
@@ -271,11 +344,23 @@ public sealed class MainForm : Form
         };
         if (_settings.UpdateCheckHours > 0) _checkTimer.Start();
 
+        _scheduleTimer = new System.Windows.Forms.Timer { Interval = 60_000 };
+        _scheduleTimer.Tick += ScheduleTimer_Tick;
+        if (_settings.AutoUpdateEnabled) _scheduleTimer.Start();
+
         // Activate correct filter button
         UpdateFilterButtons();
 
         Load += async (_, _) =>
         {
+            // If started via Windows startup, hide to tray immediately without showing the window
+            if (_startMinimized)
+            {
+                this.WindowState  = FormWindowState.Minimized;
+                this.ShowInTaskbar = false;
+                this.Hide();
+            }
+
             RebuildRows();
             if (_settings.CheckOnStartup) await RefreshStatusAsync();
             // Delay app-update check slightly so the main window finishes loading first
@@ -342,40 +427,65 @@ public sealed class MainForm : Form
         var g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-        // ── Baum (tree) + launch icon ────────────────────────────────────────
-        int ox = 10, oy = 5;   // origin offset within title bar
+        // ── Icon badge (dark blue rounded rect) ──────────────────────────────
+        int bx = 8, by = 6, bw = 28, bh = 28;
+        using var badgePath = RoundedRect(bx, by, bw, bh, 6);
+        using var badgeBrush = new SolidBrush(Color.FromArgb(18, 40, 90));
+        using var badgePen   = new Pen(Color.FromArgb(55, 90, 180), 1f);
+        g.FillPath(badgeBrush, badgePath);
+        g.DrawPath(badgePen,   badgePath);
 
-        using var treeBrush  = new SolidBrush(AppTheme.Success);
-        using var trunkBrush = new SolidBrush(Color.FromArgb(150, 90, 30));
-        using var flameBrush = new SolidBrush(Color.FromArgb(255, 150, 30));
-        using var glowBrush  = new SolidBrush(Color.FromArgb(80, 255, 180, 30));
+        // ── Tree inside badge ─────────────────────────────────────────────────
+        int ox = bx + 5, oy = by + 2;
+        using var treeBrush  = new SolidBrush(Color.White);
+        using var trunkBrush = new SolidBrush(Color.FromArgb(160, 130, 80));
+        using var flameBrush = new SolidBrush(AppTheme.Accent);
 
         // Top pine layer
         g.FillPolygon(treeBrush, new PointF[]
         {
             new(ox + 9, oy),
-            new(ox + 5, oy + 9),
-            new(ox + 13, oy + 9),
+            new(ox + 5, oy + 8),
+            new(ox + 13, oy + 8),
         });
         // Bottom pine layer (wider)
         g.FillPolygon(treeBrush, new PointF[]
         {
-            new(ox + 9, oy + 6),
-            new(ox + 2, oy + 16),
-            new(ox + 16, oy + 16),
+            new(ox + 9, oy + 5),
+            new(ox + 2, oy + 14),
+            new(ox + 16, oy + 14),
         });
         // Trunk
-        g.FillRectangle(trunkBrush, ox + 7, oy + 16, 4, 5);
-        // Launch flame glow (soft halo behind flames)
-        g.FillEllipse(glowBrush, ox + 4, oy + 19, 10, 7);
-        // Launch flames — three oval jets below trunk
-        g.FillEllipse(flameBrush, ox + 5,  oy + 21, 3, 5);
-        g.FillEllipse(flameBrush, ox + 7,  oy + 21, 4, 6);
-        g.FillEllipse(flameBrush, ox + 10, oy + 21, 3, 5);
+        g.FillRectangle(trunkBrush, ox + 7, oy + 14, 4, 4);
+        // Flames (accent blue)
+        g.FillEllipse(flameBrush, ox + 5,  oy + 17, 3, 5);
+        g.FillEllipse(flameBrush, ox + 7,  oy + 17, 4, 6);
+        g.FillEllipse(flameBrush, ox + 10, oy + 17, 3, 5);
 
-        // Title text
-        using var titleBrush = new SolidBrush(AppTheme.TextPrimary);
-        g.DrawString("BaumLaunch", AppTheme.FontHeader, titleBrush, ox + 22, 12);
+        // ── "Baum" + "Launch" title text ──────────────────────────────────────
+        int tx = bx + bw + 8;
+        using var baumBrush   = new SolidBrush(AppTheme.Accent);
+        using var launchBrush = new SolidBrush(AppTheme.TextSecondary);
+        var baumFont   = new Font("Segoe UI", 12f, FontStyle.Bold);
+        var launchFont = new Font("Segoe UI", 12f, FontStyle.Regular);
+
+        g.DrawString("Baum",   baumFont,   baumBrush,   tx, 10);
+        float baumW = g.MeasureString("Baum", baumFont).Width - 3f;
+        g.DrawString("Launch", launchFont, launchBrush, tx + baumW, 10);
+
+        baumFont.Dispose();
+        launchFont.Dispose();
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(int x, int y, int w, int h, int r)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(x, y, r * 2, r * 2, 180, 90);
+        path.AddArc(x + w - r * 2, y, r * 2, r * 2, 270, 90);
+        path.AddArc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 0, 90);
+        path.AddArc(x, y + h - r * 2, r * 2, r * 2, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private void TitleBar_MouseDown(object? sender, MouseEventArgs e)
@@ -429,9 +539,19 @@ public sealed class MainForm : Form
             r.Dispose();
         }
 
-        var filtered = _activeCategory == "All"
-            ? _entries
-            : _entries.Where(e => e.Category == _activeCategory).ToList();
+        var filtered = _activeCategory switch
+        {
+            "All"            => _entries,
+            "WinGet Updates" => _entries.Where(e => e.IsWinGetManaged && e.Status == AppStatus.UpdateAvailable).ToList(),
+            _                => _entries.Where(e => e.Category == _activeCategory).ToList(),
+        };
+
+        // Apply search filter (works across all tabs)
+        if (!string.IsNullOrWhiteSpace(_searchFilter))
+            filtered = filtered
+                .Where(e => e.DisplayName.Contains(_searchFilter, StringComparison.OrdinalIgnoreCase)
+                         || e.Category.Contains(_searchFilter,    StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
         // Add rows in reverse order (DockStyle.Top stacks in reverse)
         var rows = filtered.Select((e, i) =>
@@ -470,15 +590,25 @@ public sealed class MainForm : Form
             AppendLog($"Switching {entry.DisplayName} to WinGet...\n▶ Uninstalling existing copy");
             ShowLogOverlay();
             bool uninstalled = await WinGetService.UninstallAsync(entry.WinGetId, line => AppendLog("  " + line));
-            AppendLog(uninstalled ? "  [Uninstalled]" : "  [Uninstall may have failed — attempting install anyway]");
+            if (uninstalled)
+                AppendLog("  [Uninstalled]");
+            else
+                AppendLog("  [Uninstall failed — will use --force to let WinGet take ownership]");
             await Task.Delay(1500);
-            AppendLog($"▶ Installing via WinGet");
-            ok = await WinGetService.InstallOrUpgradeAsync(entry.WinGetId, false, line => AppendLog("  " + line));
+            AppendLog($"▶ Installing via WinGet{(uninstalled ? "" : " (forced)")}");
+            // If uninstall failed the app is still present; pass force=true so winget
+            // reinstalls over it and registers ownership rather than skipping as "already installed".
+            ok = await WinGetService.InstallOrUpgradeAsync(
+                entry.WinGetId, false, line => AppendLog("  " + line), force: !uninstalled);
             AppendLog(ok ? "  [OK]" : "  [FAILED]");
         }
         else
         {
-            ok = await WinGetService.InstallOrUpgradeAsync(entry.WinGetId, entry.IsInstalled, null);
+            string verb = entry.IsInstalled ? "Updating" : "Installing";
+            AppendLog($"{verb} {entry.DisplayName}...");
+            ShowLogOverlay();
+            ok = await WinGetService.InstallOrUpgradeAsync(entry.WinGetId, entry.IsInstalled, line => AppendLog("  " + line));
+            AppendLog(ok ? "\n[Done]" : "\n[FAILED]");
         }
 
         entry.Status = ok ? AppStatus.Updated : AppStatus.Failed;
@@ -568,27 +698,31 @@ public sealed class MainForm : Form
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
 
-            var installed  = await WinGetService.GetInstalledAsync(cts.Token);
-            var upgradable = await WinGetService.GetUpgradableAsync(cts.Token);
+            // Pass 1 (fast): winget-managed list + upgradable list — run in parallel
+            var managedTask    = WinGetService.GetWinGetManagedAsync(cts.Token);
+            var upgradableTask = WinGetService.GetUpgradableAsync(cts.Token);
+            await Task.WhenAll(managedTask, upgradableTask);
 
-            // Build lookup dictionaries
-            var installedMap  = installed.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
-            var upgradableMap = upgradable.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
+            var wingetMap = managedTask.Result
+                .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var upgradableMap = upgradableTask.Result
+                .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            // Pass 2 (instant): scan Windows Add/Remove Programs registry directly.
+            // No child processes — finds apps installed by any means (WinGet, browser, installer).
+            var arpApps = await Task.Run(() => RegistryService.GetInstalledApps(), cts.Token);
 
             foreach (var entry in _entries)
             {
-                if (installedMap.TryGetValue(entry.WinGetId, out var inst))
+                if (wingetMap.TryGetValue(entry.WinGetId, out var inst))
                 {
+                    // Installed and managed by WinGet
                     entry.InstalledVersion = inst.InstalledVersion;
-                    entry.IsWinGetManaged  = inst.Source.Equals("winget", StringComparison.OrdinalIgnoreCase);
+                    entry.IsWinGetManaged  = true;
 
-                    if (!entry.IsWinGetManaged)
-                    {
-                        // Installed, but not through WinGet — offer to switch
-                        entry.AvailableVersion = null;
-                        entry.Status           = AppStatus.NotManaged;
-                    }
-                    else if (upgradableMap.TryGetValue(entry.WinGetId, out var upg) && !string.IsNullOrWhiteSpace(upg.AvailableVersion))
+                    if (upgradableMap.TryGetValue(entry.WinGetId, out var upg) && !string.IsNullOrWhiteSpace(upg.AvailableVersion))
                     {
                         entry.AvailableVersion = upg.AvailableVersion;
                         entry.Status           = AppStatus.UpdateAvailable;
@@ -599,18 +733,28 @@ public sealed class MainForm : Form
                         entry.Status           = AppStatus.UpToDate;
                     }
                 }
+                else if (upgradableMap.TryGetValue(entry.WinGetId, out var upg2))
+                {
+                    // In upgrade list but not in managed list — treat as WinGet-managed with update
+                    entry.InstalledVersion = upg2.InstalledVersion;
+                    entry.AvailableVersion = upg2.AvailableVersion;
+                    entry.IsWinGetManaged  = true;
+                    entry.Status           = AppStatus.UpdateAvailable;
+                }
                 else
                 {
-                    entry.IsWinGetManaged = false;
-                    // Check upgradable list too (some may show even if not in 'list')
-                    if (upgradableMap.TryGetValue(entry.WinGetId, out var upg2))
+                    // Pass 2: check ARP registry — matches by DisplayName or ArpNameHint substring
+                    var arpMatch = FindInArp(arpApps, entry);
+                    if (arpMatch.HasValue)
                     {
-                        entry.InstalledVersion = upg2.InstalledVersion;
-                        entry.AvailableVersion = upg2.AvailableVersion;
-                        entry.Status           = AppStatus.UpdateAvailable;
+                        entry.InstalledVersion = arpMatch.Value.Version;
+                        entry.IsWinGetManaged  = false;
+                        entry.AvailableVersion = null;
+                        entry.Status           = AppStatus.NotManaged;
                     }
                     else
                     {
+                        entry.IsWinGetManaged  = false;
                         entry.InstalledVersion = null;
                         entry.AvailableVersion = null;
                         entry.Status           = AppStatus.NotInstalled;
@@ -659,6 +803,11 @@ public sealed class MainForm : Form
     {
         int updates = _entries.Count(e => e.HasUpdate);
         _btnUpdateAll.Text = $"Update All ({updates})";
+
+        // Keep the Updates tab label in sync with the current count
+        var updatesTab = _filterButtons.FirstOrDefault(b => b.Tag is string t && t == "WinGet Updates");
+        if (updatesTab != null)
+            updatesTab.Text = updates > 0 ? $"⬆ Updates ({updates})" : "⬆ Updates";
     }
 
     private void UpdateTrayIcon()
@@ -673,29 +822,46 @@ public sealed class MainForm : Form
     // ── Tray icon generation ────────────────────────────────────────────────────
     private static Icon GenerateTrayIcon(bool hasUpdates)
     {
-        using var bmp = new Bitmap(16, 16);
+        // Use 32×32 for crisp rendering; Windows scales it to tray size
+        using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
-            g.Clear(Color.Transparent);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            var treeColor  = hasUpdates ? AppTheme.Warning : AppTheme.Success;
-            var flameColor = hasUpdates ? Color.FromArgb(255, 120, 30) : Color.FromArgb(255, 160, 40);
+            // Dark blue-black background badge
+            using var bgBrush  = new SolidBrush(Color.FromArgb(12, 25, 65));
+            using var bgPen    = new Pen(Color.FromArgb(50, 90, 180), 1.5f);
+            using var bgPath   = new System.Drawing.Drawing2D.GraphicsPath();
+            bgPath.AddArc(1, 1, 10, 10, 180, 90);
+            bgPath.AddArc(21, 1, 10, 10, 270, 90);
+            bgPath.AddArc(21, 21, 10, 10, 0, 90);
+            bgPath.AddArc(1, 21, 10, 10, 90, 90);
+            bgPath.CloseFigure();
+            g.FillPath(bgBrush, bgPath);
+            g.DrawPath(bgPen,   bgPath);
 
-            using var treeBrush  = new SolidBrush(treeColor);
-            using var trunkBrush = new SolidBrush(Color.FromArgb(140, 80, 30));
+            // White tree
+            using var treeBrush  = new SolidBrush(Color.White);
+            using var trunkBrush = new SolidBrush(Color.FromArgb(180, 150, 90));
+            g.FillPolygon(treeBrush, new PointF[] { new(16, 3), new(10, 12), new(22, 12) });
+            g.FillPolygon(treeBrush, new PointF[] { new(16, 8), new(6, 20),  new(26, 20) });
+            g.FillRectangle(trunkBrush, 13, 20, 6, 5);
+
+            // Accent-blue flames
+            var flameColor = hasUpdates ? AppTheme.Warning : AppTheme.Accent;
             using var flameBrush = new SolidBrush(flameColor);
+            g.FillEllipse(flameBrush, 10, 24, 4, 6);
+            g.FillEllipse(flameBrush, 14, 24, 4, 7);
+            g.FillEllipse(flameBrush, 18, 24, 4, 6);
 
-            // Pine tree — top layer (narrow upper triangle)
-            g.FillPolygon(treeBrush, new PointF[] { new(8, 1), new(5, 7), new(11, 7) });
-            // Pine tree — bottom layer (wider lower triangle)
-            g.FillPolygon(treeBrush, new PointF[] { new(8, 4), new(2, 10), new(14, 10) });
-            // Trunk
-            g.FillRectangle(trunkBrush, 6, 10, 4, 3);
-            // Launch flames — three small flame teardrop shapes below trunk
-            g.FillEllipse(flameBrush, 6,  13, 2, 3);   // left jet
-            g.FillEllipse(flameBrush, 7,  13, 2, 3);   // center jet
-            g.FillEllipse(flameBrush, 9,  13, 2, 3);   // right jet (overlap center)
+            // Orange dot indicator when updates are available
+            if (hasUpdates)
+            {
+                using var dotBrush = new SolidBrush(AppTheme.Warning);
+                using var dotPen   = new Pen(Color.FromArgb(12, 25, 65), 1.5f);
+                g.FillEllipse(dotBrush, 22, 1, 9, 9);
+                g.DrawEllipse(dotPen,   22, 1, 9, 9);
+            }
         }
         return Icon.FromHandle(bmp.GetHicon());
     }
@@ -893,7 +1059,7 @@ public sealed class MainForm : Form
         {
             e.Cancel = true;
             Hide();
-            _trayIcon.ShowBalloonTip(2000, "BaumLaunch", "Running in the system tray.", ToolTipIcon.Info);
+            _trayIcon.ShowBalloonTip(2000, "BaumLaunch", "Running in the system tray.", ToolTipIcon.None);
         }
         else
         {
@@ -901,6 +1067,8 @@ public sealed class MainForm : Form
             _trayIcon.Dispose();
             _checkTimer.Stop();
             _checkTimer.Dispose();
+            _scheduleTimer.Stop();
+            _scheduleTimer.Dispose();
         }
     }
 
@@ -921,10 +1089,56 @@ public sealed class MainForm : Form
             _checkTimer.Interval = SettingsToTimerInterval(_settings);
             _checkTimer.Start();
         }
+
+        // Re-configure the schedule timer
+        _scheduleTimer.Stop();
+        if (_settings.AutoUpdateEnabled) _scheduleTimer.Start();
     }
 
     private static int SettingsToTimerInterval(AppSettings s) =>
         Math.Max(s.UpdateCheckHours, 1) * 60 * 60 * 1000;
+
+    // ── Scheduled auto-update ───────────────────────────────────────────────────
+    private void ScheduleTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_settings.AutoUpdateEnabled) return;
+
+        var now = DateTime.Now;
+        // Don't fire more than once per day
+        if (_lastScheduledRun.Date == now.Date) return;
+
+        bool dayMatches = _settings.AutoUpdateSchedule == "Monthly"
+            ? now.Day == _settings.AutoUpdateDayOfMonth
+            : (int)now.DayOfWeek == _settings.AutoUpdateDayOfWeek;
+
+        if (!dayMatches) return;
+        if (now.Hour != _settings.AutoUpdateHour || now.Minute != _settings.AutoUpdateMinute) return;
+
+        _lastScheduledRun = now;
+        _ = RunScheduledUpdateAsync();
+    }
+
+    private async Task RunScheduledUpdateAsync()
+    {
+        SafeInvoke(() => _trayIcon?.ShowBalloonTip(2000, "BaumLaunch",
+            "Starting scheduled silent update…", ToolTipIcon.None));
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("winget",
+                "upgrade --all --silent --accept-package-agreements --accept-source-agreements")
+            {
+                UseShellExecute = false,
+                CreateNoWindow  = true,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null) await proc.WaitForExitAsync();
+        }
+        catch { }
+
+        await SafeInvoke(RefreshStatusAsync);
+        SafeInvoke(() => _trayIcon?.ShowBalloonTip(3000, "BaumLaunch",
+            "Scheduled update complete.", ToolTipIcon.None));
+    }
 
     // ── App self-update ──────────────────────────────────────────────────────────
     private async Task CheckForAppUpdateAsync(bool force = false)
@@ -938,14 +1152,14 @@ public sealed class MainForm : Form
             if (result == null)
             {
                 if (force)
-                    SafeInvoke(() => _trayIcon.ShowBalloonTip(2000, "BaumLaunch", "Already up to date.", ToolTipIcon.Info));
+                    SafeInvoke(() => _trayIcon.ShowBalloonTip(2000, "BaumLaunch", "Already up to date.", ToolTipIcon.None));
                 return;
             }
 
             var (version, url) = result.Value;
             SafeInvoke(() =>
                 _trayIcon.ShowBalloonTip(4000, "BaumLaunch Update",
-                    $"Updating to v{version} — the app will restart automatically.", ToolTipIcon.Info));
+                    $"Updating to v{version} — the app will restart automatically.", ToolTipIcon.None));
 
             // Small pause so the user sees the balloon before the window disappears
             await Task.Delay(2000);
@@ -958,6 +1172,43 @@ public sealed class MainForm : Form
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
+
+    private readonly record struct ArpMatch(string Version);
+
+    /// <summary>
+    /// Looks up a catalog entry in the ARP registry dictionary.
+    /// Checks (in order): exact DisplayName match, DisplayName prefix + space/version, ArpNameHint substring.
+    /// </summary>
+    private static ArpMatch? FindInArp(Dictionary<string, string> arpApps, AppEntry entry)
+    {
+        var display = entry.DisplayName;
+        var hint    = entry.ArpNameHint;
+
+        foreach (var (arpName, version) in arpApps)
+        {
+            // Exact match (case-insensitive)
+            if (arpName.Equals(display, StringComparison.OrdinalIgnoreCase))
+                return new ArpMatch(version);
+
+            // ARP name starts with catalog DisplayName followed by a space or digit (version suffix)
+            // e.g. "7-Zip 24.08 (x64 edition)" matches catalog "7-Zip"
+            if (arpName.StartsWith(display, StringComparison.OrdinalIgnoreCase))
+            {
+                int next = display.Length;
+                if (next < arpName.Length && (arpName[next] == ' ' || char.IsDigit(arpName[next])))
+                    return new ArpMatch(version);
+            }
+
+            // ArpNameHint substring — for packages where the ARP name has no obvious relation
+            // e.g. hint "Visual Studio Code" matches "Microsoft Visual Studio Code"
+            // e.g. hint "LGHUB" matches "LGHUB"
+            if (!string.IsNullOrEmpty(hint) &&
+                arpName.Contains(hint, StringComparison.OrdinalIgnoreCase))
+                return new ArpMatch(version);
+        }
+        return null;
+    }
+
     private void SafeInvoke(Action action)
     {
         if (IsDisposed) return;

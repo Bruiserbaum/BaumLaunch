@@ -11,6 +11,17 @@ public sealed class AppSettings
     /// <summary>Run a package status check immediately on startup.</summary>
     public bool CheckOnStartup   { get; set; } = true;
 
+    // ── Scheduled auto-update ─────────────────────────────────────────────────
+    public bool   AutoUpdateEnabled    { get; set; } = false;
+    /// <summary>"Weekly" or "Monthly"</summary>
+    public string AutoUpdateSchedule   { get; set; } = "Weekly";
+    /// <summary>Day of week: 0=Sunday … 6=Saturday (used when Schedule == "Weekly")</summary>
+    public int    AutoUpdateDayOfWeek  { get; set; } = 1; // Monday
+    /// <summary>Day of month: 1-28 (used when Schedule == "Monthly")</summary>
+    public int    AutoUpdateDayOfMonth { get; set; } = 1;
+    public int    AutoUpdateHour       { get; set; } = 2;
+    public int    AutoUpdateMinute     { get; set; } = 0;
+
     // ── Persistence ──────────────────────────────────────────────────────────
 
     private static string FilePath =>
@@ -56,7 +67,7 @@ public sealed class AppSettings
         using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
         if (key == null) return;
         if (enable)
-            key.SetValue(RunValueName, $"\"{Application.ExecutablePath}\"");
+            key.SetValue(RunValueName, $"\"{Application.ExecutablePath}\" --startup");
         else
             key.DeleteValue(RunValueName, false);
     }

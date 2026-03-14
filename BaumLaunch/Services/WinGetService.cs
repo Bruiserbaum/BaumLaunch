@@ -4,7 +4,8 @@ using System.Text.RegularExpressions;
 
 namespace BaumLaunch.Services;
 
-public sealed record WinGetEntry(string Id, string InstalledVersion, string AvailableVersion, string Source = "");
+/// <param name="Name">Display name from the Name column (used for fallback matching of non-WinGet installs).</param>
+public sealed record WinGetEntry(string Id, string InstalledVersion, string AvailableVersion, string Source = "", string Name = "");
 
 public static class WinGetService
 {
@@ -29,12 +30,32 @@ public static class WinGetService
         catch { return ""; }
     }
 
+    /// <summary>Returns apps that WinGet itself installed (Source == "winget"). Very reliable.</summary>
+    public static async Task<List<WinGetEntry>> GetWinGetManagedAsync(CancellationToken ct = default)
+    {
+        var output = await RunWinGetAsync("list --source winget --accept-source-agreements", ct);
+        return ParseTable(output);
+    }
+
+    /// <summary>
+    /// Returns all installed apps (WinGet + ARP/system installs).
+    /// Used to detect apps installed outside WinGet that WinGet can correlate to a package ID.
+    /// </summary>
     public static async Task<List<WinGetEntry>> GetInstalledAsync(CancellationToken ct = default)
     {
-        // No --source filter so we also detect apps installed outside of WinGet.
-        // The Source column tells us whether each entry is WinGet-managed ("winget") or not.
         var output = await RunWinGetAsync("list --accept-source-agreements", ct);
         return ParseTable(output);
+    }
+
+    /// <summary>
+    /// Checks whether a specific package is installed (by any means, not just WinGet).
+    /// More reliable than the full list for per-app detection because it asks about one ID exactly.
+    /// </summary>
+    public static async Task<WinGetEntry?> CheckSingleAsync(string id, CancellationToken ct = default)
+    {
+        var output = await RunWinGetAsync(
+            $"list --id {id} --exact --accept-source-agreements --disable-interactivity", ct);
+        return ParseTable(output).FirstOrDefault();
     }
 
     public static async Task<List<WinGetEntry>> GetUpgradableAsync(CancellationToken ct = default)
@@ -44,10 +65,16 @@ public static class WinGetService
     }
 
     public static async Task<bool> InstallOrUpgradeAsync(
-        string id, bool isInstalled, Action<string>? onOutput = null, CancellationToken ct = default)
+        string id, bool isInstalled, Action<string>? onOutput = null,
+        bool force = false, CancellationToken ct = default)
     {
-        string verb = isInstalled ? "upgrade" : "install";
-        string args = $"{verb} --id {id} --exact --silent --accept-package-agreements --accept-source-agreements";
+        string verb  = isInstalled ? "upgrade" : "install";
+        // --disable-interactivity suppresses winget's own prompts without passing /S to the installer
+        // (--silent fails on some packages that don't support silent-mode installation)
+        // --force (optional) makes winget reinstall even if already at latest version — used when
+        // a prior uninstall failed so we need winget to take ownership of an existing ARP install.
+        string force_ = force ? " --force" : "";
+        string args  = $"{verb} --id {id} --exact --disable-interactivity --accept-package-agreements --accept-source-agreements{force_}";
 
         try
         {
@@ -65,7 +92,8 @@ public static class WinGetService
             proc.BeginOutputReadLine();
 
             await proc.WaitForExitAsync(ct);
-            return proc.ExitCode == 0;
+            // 0 = success; 3010 = success (reboot required); -1978335189 = already up-to-date
+            return proc.ExitCode == 0 || proc.ExitCode == 3010 || proc.ExitCode == -1978335189;
         }
         catch { return false; }
     }
@@ -98,14 +126,13 @@ public static class WinGetService
         var results = new List<WinGetEntry>();
         if (string.IsNullOrWhiteSpace(output)) return results;
 
-        // Remove ANSI escape codes
+        // Remove ANSI escape codes and non-printable chars
         output = Regex.Replace(output, @"\x1B\[[0-9;]*[mK]", "");
-        // Remove non-printable chars except newline/CR/tab
         output = Regex.Replace(output, @"[^\x09\x0A\x0D\x20-\x7E]", "");
 
         var lines = output.Split('\n');
 
-        // Find header line (contains "Id" and "Version" and "Name")
+        // Find header line (must contain Id, Version, Name columns)
         int headerIdx = -1;
         for (int i = 0; i < lines.Length; i++)
         {
@@ -118,7 +145,7 @@ public static class WinGetService
         }
         if (headerIdx < 0) return results;
 
-        var header = lines[headerIdx];
+        var header   = lines[headerIdx];
         int idCol    = FindColIdx(header, "Id");
         int verCol   = FindColIdx(header, "Version");
         int availCol = FindColIdx(header, "Available");
@@ -137,25 +164,33 @@ public static class WinGetService
             if (string.IsNullOrWhiteSpace(line)) continue;
             if (line.TrimStart().StartsWith('-')) continue;
 
-            // Determine column end boundaries
+            // Column boundaries
             int idEnd    = verCol > idCol ? verCol : line.Length;
             int verEnd   = availCol > verCol ? availCol : (srcCol > verCol ? srcCol : line.Length);
             int availEnd = srcCol > availCol && availCol >= 0 ? srcCol : line.Length;
 
+            // Name lives from position 0 to the start of the Id column
+            string name      = idCol > 0 ? SafeSubstring(line, 0, idCol).Trim() : "";
             string id        = SafeSubstring(line, idCol, idEnd).Trim();
             string version   = SafeSubstring(line, verCol, verEnd).Trim();
             string available = availCol >= 0 ? SafeSubstring(line, availCol, availEnd).Trim() : "";
             string source    = srcCol  >= 0 ? SafeSubstring(line, srcCol, line.Length).Trim() : "";
 
-            // Skip entries without a valid winget ID (must contain a dot)
-            if (string.IsNullOrWhiteSpace(id) || !id.Contains('.')) continue;
-            // Skip header repeat lines
+            // Skip junk/summary lines
+            if (string.IsNullOrWhiteSpace(id)) continue;
             if (id.Equals("Id", StringComparison.OrdinalIgnoreCase)) continue;
-            // Skip lines that are just summary text
             if (id.StartsWith("upgrades", StringComparison.OrdinalIgnoreCase)) continue;
             if (version.Contains("packages", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.IsNullOrWhiteSpace(version) && string.IsNullOrWhiteSpace(name)) continue;
 
-            results.Add(new WinGetEntry(id, version, available, source));
+            // Accept entry if:
+            //  • ID looks like a WinGet package ID (contains '.') — used for ID-based lookup
+            //  • OR it has a meaningful display name + version — kept for name-based fallback matching
+            bool hasWinGetId = id.Contains('.');
+            bool hasNameInfo  = !string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(version);
+            if (!hasWinGetId && !hasNameInfo) continue;
+
+            results.Add(new WinGetEntry(id, version, available, source, name));
         }
 
         return results;
