@@ -30,11 +30,17 @@ public static class WinGetService
         catch { return ""; }
     }
 
-    /// <summary>Returns apps that WinGet itself installed (Source == "winget"). Very reliable.</summary>
+    /// <summary>
+    /// Returns apps whose Source column == "winget" (i.e. installed/managed by WinGet).
+    /// Uses plain "winget list" (local, no network) and filters by Source in code so we never
+    /// depend on a --source winget index download that can silently time-out and return nothing.
+    /// </summary>
     public static async Task<List<WinGetEntry>> GetWinGetManagedAsync(CancellationToken ct = default)
     {
-        var output = await RunWinGetAsync("list --source winget --accept-source-agreements", ct);
-        return ParseTable(output);
+        var output = await RunWinGetAsync("list --accept-source-agreements --disable-interactivity", ct);
+        return ParseTable(output)
+            .Where(e => e.Source.Equals("winget", StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <summary>

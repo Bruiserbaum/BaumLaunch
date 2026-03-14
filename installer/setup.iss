@@ -1,6 +1,6 @@
 #define AppName      "BaumLaunch"
-#define AppVersion   "1.17.4"
-#define AppVersionFull "1.17.4"
+#define AppVersion   "1.17.5"
+#define AppVersionFull "1.17.5"
 #define AppPublisher "Bnuss"
 #define AppExeName   "BaumLaunch.exe"
 #define PublishDir   "..\BaumLaunch\bin\Release\net8.0-windows10.0.22621.0\win-x64\publish"
