@@ -76,17 +76,34 @@ public sealed class MainForm : Form
         _titleBar.Paint     += TitleBar_Paint;
 
         var btnClose = MakeTitleBarButton("✕", Color.FromArgb(220, 60, 60));
-        btnClose.Location = new Point(Width - 44, 0);
-        btnClose.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.Click   += (_, _) => { _exitRequested = false; Close(); };
+        btnClose.Click += (_, _) => { _exitRequested = false; Close(); };
 
         var btnMin = MakeTitleBarButton("–", Color.FromArgb(60, 60, 90));
-        btnMin.Location = new Point(Width - 88, 0);
-        btnMin.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
-        btnMin.Click   += (_, _) => WindowState = FormWindowState.Minimized;
+        btnMin.Click += (_, _) => WindowState = FormWindowState.Minimized;
+
+        var btnTray = MakeTitleBarButton("⬓", Color.FromArgb(60, 60, 90));
+        btnTray.Click += (_, _) =>
+        {
+            Hide();
+            _trayIcon?.ShowBalloonTip(1500, "BaumLaunch", "Minimized to tray.", ToolTipIcon.None);
+        };
 
         _titleBar.Controls.Add(btnClose);
         _titleBar.Controls.Add(btnMin);
+        _titleBar.Controls.Add(btnTray);
+
+        // Position buttons flush-right; recalculate whenever the title bar is resized
+        // (Anchor cannot be used here because the panel has no width yet at construction time)
+        void PositionTitleBarButtons()
+        {
+            int w = _titleBar.Width;
+            btnClose.Location = new Point(w - 44,  0);
+            btnMin.Location   = new Point(w - 88,  0);
+            btnTray.Location  = new Point(w - 132, 0);
+        }
+        _titleBar.SizeChanged += (_, _) => PositionTitleBarButtons();
+        // Fallback: also reposition when the form itself resizes
+        SizeChanged += (_, _) => PositionTitleBarButtons();
 
         // ── Filter bar ──────────────────────────────────────────────────────
         _filterBar = new Panel
