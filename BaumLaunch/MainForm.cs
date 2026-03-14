@@ -713,15 +713,18 @@ public sealed class MainForm : Form
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
 
-            // Pass 1 (fast): winget-managed list + upgradable list — run in parallel
-            var managedTask    = WinGetService.GetWinGetManagedAsync(cts.Token);
-            var upgradableTask = WinGetService.GetUpgradableAsync(cts.Token);
-            await Task.WhenAll(managedTask, upgradableTask);
+            // Pass 1: winget-managed list, then upgradable list — run SEQUENTIALLY.
+            // Both "winget list --source winget" and "winget upgrade --source winget" write
+            // to the same SQLite source-index file.  Running them in parallel causes a
+            // database lock where one silently returns empty, wiping out all managed state.
+            // Sequential: first call downloads the source; second call hits the cache (fast).
+            var managed    = await WinGetService.GetWinGetManagedAsync(cts.Token);
+            var upgradable = await WinGetService.GetUpgradableAsync(cts.Token);
 
-            var wingetMap = managedTask.Result
+            var wingetMap = managed
                 .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-            var upgradableMap = upgradableTask.Result
+            var upgradableMap = upgradable
                 .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 

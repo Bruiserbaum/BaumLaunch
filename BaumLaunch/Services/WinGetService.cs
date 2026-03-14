@@ -31,28 +31,27 @@ public static class WinGetService
     }
 
     /// <summary>
-    /// Returns all apps managed by WinGet, using two parallel strategies unioned together:
-    ///  1. "winget list --source winget"  — queries WinGet's own install records; the only
-    ///     reliable way to detect portable apps (e.g. Rufus) that have no ARP entry.
-    ///  2. "winget list" + Source=="winget" filter — works when the source-index download
-    ///     for strategy 1 contends with the concurrent upgrade check and returns empty.
-    /// Taking the union means we survive both failure modes.
+    /// Returns all apps managed by WinGet.
+    /// Primary: "winget list --source winget" — queries WinGet's own install records and
+    ///   correctly detects portable apps (e.g. Rufus) that have no ARP entry.
+    /// Fallback: plain "winget list" filtered by Source=="winget" — used only when the
+    ///   primary returns nothing (e.g. transient source error).
+    /// Called BEFORE GetUpgradableAsync so the source-index download is cached by the time
+    /// the upgrade check runs (avoids SQLite lock contention from concurrent source writes).
     /// </summary>
     public static async Task<List<WinGetEntry>> GetWinGetManagedAsync(CancellationToken ct = default)
     {
-        var t1 = RunWinGetAsync("list --source winget --accept-source-agreements --disable-interactivity", ct);
-        var t2 = RunWinGetAsync("list --accept-source-agreements --disable-interactivity", ct);
-        await Task.WhenAll(t1, t2);
+        var primary = ParseTable(
+            await RunWinGetAsync("list --source winget --accept-source-agreements --disable-interactivity", ct));
 
-        var fromSource = ParseTable(t1.Result);
-        var fromFilter = ParseTable(t2.Result)
-            .Where(e => e.Source.Equals("winget", StringComparison.OrdinalIgnoreCase));
+        if (primary.Count > 0)
+            return primary;
 
-        // Union both; prefer entries from the --source winget result (has richer metadata)
-        return fromSource
-            .Concat(fromFilter)
-            .GroupBy(e => e.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
+        // Primary returned nothing — source may be temporarily unavailable; fall back to
+        // reading local install data and filtering by the Source column.
+        return ParseTable(
+                await RunWinGetAsync("list --accept-source-agreements --disable-interactivity", ct))
+            .Where(e => e.Source.Equals("winget", StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
