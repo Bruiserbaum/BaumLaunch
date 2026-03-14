@@ -205,6 +205,7 @@ public sealed class AppRow : UserControl
             AppStatus.Installing      => AppTheme.Accent,
             AppStatus.Updated         => AppTheme.Success,
             AppStatus.Failed          => AppTheme.Danger,
+            AppStatus.NotManaged      => Color.FromArgb(180, 120, 220),  // purple
             _                         => AppTheme.TextMuted,
         };
 
@@ -216,6 +217,7 @@ public sealed class AppRow : UserControl
             AppStatus.Installing      => "Installing...",
             AppStatus.Updated         => "Updated \u2713",
             AppStatus.Failed          => "Failed",
+            AppStatus.NotManaged      => "Not via WinGet",
             _                         => "Unknown",
         };
 
@@ -289,6 +291,13 @@ public sealed class AppRow : UserControl
                 _btnAction.BackColor = AppTheme.Warning;
                 _btnAction.ForeColor = Color.FromArgb(30, 30, 30);
                 _btnAction.Visible   = true;
+                break;
+            case AppStatus.NotManaged:
+                _btnAction.Text      = "Switch";
+                _btnAction.BackColor = Color.FromArgb(100, 60, 160);
+                _btnAction.ForeColor = AppTheme.TextPrimary;
+                _btnAction.Visible   = true;
+                _btnAction.Enabled   = true;
                 break;
             case AppStatus.Installing:
                 _btnAction.Text      = "...";

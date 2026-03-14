@@ -451,17 +451,34 @@ public sealed class MainForm : Form
     // ── Install / Update ────────────────────────────────────────────────────────
     private async Task RunSingleAsync(AppEntry entry)
     {
+        bool isSwitching = entry.Status == AppStatus.NotManaged;
+
         entry.Status = AppStatus.Installing;
         RefreshRow(entry);
 
-        var lines = new List<string>();
-        bool ok = await WinGetService.InstallOrUpgradeAsync(
-            entry.WinGetId, entry.IsInstalled,
-            line => lines.Add(line));
+        bool ok = false;
+
+        if (isSwitching)
+        {
+            // Uninstall the non-WinGet copy first, then reinstall via WinGet
+            AppendLog($"Switching {entry.DisplayName} to WinGet...\n▶ Uninstalling existing copy");
+            ShowLogOverlay();
+            bool uninstalled = await WinGetService.UninstallAsync(entry.WinGetId, line => AppendLog("  " + line));
+            AppendLog(uninstalled ? "  [Uninstalled]" : "  [Uninstall may have failed — attempting install anyway]");
+            await Task.Delay(1500);
+            AppendLog($"▶ Installing via WinGet");
+            ok = await WinGetService.InstallOrUpgradeAsync(entry.WinGetId, false, line => AppendLog("  " + line));
+            AppendLog(ok ? "  [OK]" : "  [FAILED]");
+        }
+        else
+        {
+            ok = await WinGetService.InstallOrUpgradeAsync(entry.WinGetId, entry.IsInstalled, null);
+        }
 
         entry.Status = ok ? AppStatus.Updated : AppStatus.Failed;
         if (ok)
         {
+            entry.IsWinGetManaged  = true;
             // For fresh installs AvailableVersion is null; use a non-null placeholder so
             // IsInstalled flips to true immediately while the background re-check runs.
             entry.InstalledVersion = entry.AvailableVersion ?? entry.InstalledVersion ?? "installed";
@@ -557,7 +574,15 @@ public sealed class MainForm : Form
                 if (installedMap.TryGetValue(entry.WinGetId, out var inst))
                 {
                     entry.InstalledVersion = inst.InstalledVersion;
-                    if (upgradableMap.TryGetValue(entry.WinGetId, out var upg) && !string.IsNullOrWhiteSpace(upg.AvailableVersion))
+                    entry.IsWinGetManaged  = inst.Source.Equals("winget", StringComparison.OrdinalIgnoreCase);
+
+                    if (!entry.IsWinGetManaged)
+                    {
+                        // Installed, but not through WinGet — offer to switch
+                        entry.AvailableVersion = null;
+                        entry.Status           = AppStatus.NotManaged;
+                    }
+                    else if (upgradableMap.TryGetValue(entry.WinGetId, out var upg) && !string.IsNullOrWhiteSpace(upg.AvailableVersion))
                     {
                         entry.AvailableVersion = upg.AvailableVersion;
                         entry.Status           = AppStatus.UpdateAvailable;
@@ -570,6 +595,7 @@ public sealed class MainForm : Form
                 }
                 else
                 {
+                    entry.IsWinGetManaged = false;
                     // Check upgradable list too (some may show even if not in 'list')
                     if (upgradableMap.TryGetValue(entry.WinGetId, out var upg2))
                     {

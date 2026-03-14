@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace BaumLaunch.Services;
 
-public sealed record WinGetEntry(string Id, string InstalledVersion, string AvailableVersion);
+public sealed record WinGetEntry(string Id, string InstalledVersion, string AvailableVersion, string Source = "");
 
 public static class WinGetService
 {
@@ -31,7 +31,9 @@ public static class WinGetService
 
     public static async Task<List<WinGetEntry>> GetInstalledAsync(CancellationToken ct = default)
     {
-        var output = await RunWinGetAsync("list --source winget --accept-source-agreements", ct);
+        // No --source filter so we also detect apps installed outside of WinGet.
+        // The Source column tells us whether each entry is WinGet-managed ("winget") or not.
+        var output = await RunWinGetAsync("list --accept-source-agreements", ct);
         return ParseTable(output);
     }
 
@@ -62,6 +64,29 @@ public static class WinGetService
             proc.OutputDataReceived += (_, e) => { if (e.Data != null) onOutput?.Invoke(e.Data); };
             proc.BeginOutputReadLine();
 
+            await proc.WaitForExitAsync(ct);
+            return proc.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    public static async Task<bool> UninstallAsync(
+        string id, Action<string>? onOutput = null, CancellationToken ct = default)
+    {
+        string args = $"uninstall --id {id} --exact --silent --accept-source-agreements";
+        try
+        {
+            var psi = new ProcessStartInfo("winget", args)
+            {
+                UseShellExecute        = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+                CreateNoWindow         = true,
+                StandardOutputEncoding = Encoding.UTF8,
+            };
+            using var proc = Process.Start(psi) ?? throw new Exception("Failed to start winget");
+            proc.OutputDataReceived += (_, e) => { if (e.Data != null) onOutput?.Invoke(e.Data); };
+            proc.BeginOutputReadLine();
             await proc.WaitForExitAsync(ct);
             return proc.ExitCode == 0;
         }
@@ -120,6 +145,7 @@ public static class WinGetService
             string id        = SafeSubstring(line, idCol, idEnd).Trim();
             string version   = SafeSubstring(line, verCol, verEnd).Trim();
             string available = availCol >= 0 ? SafeSubstring(line, availCol, availEnd).Trim() : "";
+            string source    = srcCol  >= 0 ? SafeSubstring(line, srcCol, line.Length).Trim() : "";
 
             // Skip entries without a valid winget ID (must contain a dot)
             if (string.IsNullOrWhiteSpace(id) || !id.Contains('.')) continue;
@@ -129,7 +155,7 @@ public static class WinGetService
             if (id.StartsWith("upgrades", StringComparison.OrdinalIgnoreCase)) continue;
             if (version.Contains("packages", StringComparison.OrdinalIgnoreCase)) continue;
 
-            results.Add(new WinGetEntry(id, version, available));
+            results.Add(new WinGetEntry(id, version, available, source));
         }
 
         return results;
