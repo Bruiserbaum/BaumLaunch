@@ -33,13 +33,14 @@ A graphical WinGet-based package manager for Windows that lives in your system t
 
 | Category | Apps |
 |---|---|
+| **AI Tools** | Claude, ChatGPT, AnythingLLM |
 | **Browsers** | Google Chrome, Mozilla Firefox, Brave, Opera |
 | **Runtimes** | Python 3.13, .NET 8 Desktop Runtime, VC++ Redistributable x64, Node.js LTS |
-| **Dev Tools** | Git, VS Code, PowerToys, Notepad++, Everything Search |
-| **Media & Tools** | VLC, 7-Zip, OBS Studio, HandBrake, Audacity, GIMP |
-| **Game Launchers** | Steam, EA Desktop, Epic Games Launcher, Ubisoft Connect, GOG Galaxy |
+| **Dev Tools** | Git, VS Code, PowerToys, Notepad++, Everything Search, GitHub Desktop, Windows Terminal, Power BI Desktop, draw.io, Raspberry Pi Imager |
+| **Media & Tools** | VLC, 7-Zip, OBS Studio, HandBrake, Audacity, GIMP, ShareX |
+| **Game Launchers** | Steam, EA Desktop, Epic Games Launcher, Ubisoft Connect, GOG Galaxy, Battle.net, World of Tanks, r2modman, CurseForge |
 | **Communication** | Discord, Spotify, Zoom, Slack |
-| **System Tools** | CrystalDiskInfo, Stream Deck, WinDirStat, HWiNFO, BleachBit |
+| **System Tools** | CrystalDiskInfo, Stream Deck, WinDirStat, HWiNFO, BleachBit, Logitech G HUB, iCUE, Rufus, Windows App, Creality Print |
 
 ---
 

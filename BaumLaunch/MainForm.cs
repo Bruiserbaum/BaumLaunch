@@ -101,7 +101,7 @@ public sealed class MainForm : Form
             e.Graphics.DrawLine(pen, 0, _filterBar.Height - 1, _filterBar.Width, _filterBar.Height - 1);
         };
 
-        string[] categories = { "All", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools" };
+        string[] categories = { "All", "AI Tools", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools" };
         int bx = 6;
         foreach (var cat in categories)
         {
