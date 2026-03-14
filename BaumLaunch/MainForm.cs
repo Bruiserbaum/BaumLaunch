@@ -136,11 +136,14 @@ public sealed class MainForm : Form
         foreach (var cat in categories)
         {
             bool isUpdatesTab = cat == "WinGet Updates";
+            string btnText = isUpdatesTab ? "⬆ Updates" : cat;
+            // Measure with the bold (active) font — it's wider, so switching fonts never clips the text
+            int btnW = TextRenderer.MeasureText(btnText, AppTheme.FontBold).Width + 22;
             var btn = new Button
             {
-                Text      = isUpdatesTab ? "⬆ Updates" : cat,
+                Text      = btnText,
                 AutoSize  = false,
-                Size      = new Size(TextRenderer.MeasureText(isUpdatesTab ? "⬆ Updates" : cat, AppTheme.FontSmall).Width + 22, 28),
+                Size      = new Size(btnW, 28),
                 Location  = new Point(bx, 5),
                 Font      = AppTheme.FontSmall,
                 FlatStyle = FlatStyle.Flat,
@@ -807,7 +810,12 @@ public sealed class MainForm : Form
         // Keep the Updates tab label in sync with the current count
         var updatesTab = _filterButtons.FirstOrDefault(b => b.Tag is string t && t == "WinGet Updates");
         if (updatesTab != null)
-            updatesTab.Text = updates > 0 ? $"⬆ Updates ({updates})" : "⬆ Updates";
+        {
+            string tabText = updates > 0 ? $"⬆ Updates ({updates})" : "⬆ Updates";
+            updatesTab.Text  = tabText;
+            // Resize so the longer "⬆ Updates (N)" text never gets clipped
+            updatesTab.Width = TextRenderer.MeasureText(tabText, AppTheme.FontBold).Width + 22;
+        }
     }
 
     private void UpdateTrayIcon()
