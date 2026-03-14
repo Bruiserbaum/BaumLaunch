@@ -552,7 +552,12 @@ public sealed class MainForm : Form
         var filtered = _activeCategory switch
         {
             "All"            => _entries,
-            "WinGet Updates" => _entries.Where(e => e.IsWinGetManaged && e.Status == AppStatus.UpdateAvailable).ToList(),
+            // All WinGet-managed apps: updates at top, then up-to-date, then alphabetical within each group
+            "WinGet Updates" => _entries
+                .Where(e => e.IsWinGetManaged)
+                .OrderByDescending(e => e.Status == AppStatus.UpdateAvailable)
+                .ThenBy(e => e.DisplayName)
+                .ToList(),
             _                => _entries.Where(e => e.Category == _activeCategory).ToList(),
         };
 
