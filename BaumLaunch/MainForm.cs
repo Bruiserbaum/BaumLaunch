@@ -160,6 +160,13 @@ public sealed class MainForm : Form
             bx += btn.Width + 2;
         }
 
+        // Ensure the window is wide enough to show every tab without clipping
+        int tabsMinWidth = bx + 16; // right margin
+        if (MinimumSize.Width < tabsMinWidth)
+            MinimumSize = new Size(tabsMinWidth, MinimumSize.Height);
+        if (Width < tabsMinWidth)
+            Size = new Size(tabsMinWidth + 80, Height); // extra breathing room
+
         // ── Search bar (dedicated row below filter tabs) ─────────────────────
         _searchBar = new Panel
         {
