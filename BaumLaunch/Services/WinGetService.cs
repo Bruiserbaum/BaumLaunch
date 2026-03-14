@@ -31,15 +31,28 @@ public static class WinGetService
     }
 
     /// <summary>
-    /// Returns apps whose Source column == "winget" (i.e. installed/managed by WinGet).
-    /// Uses plain "winget list" (local, no network) and filters by Source in code so we never
-    /// depend on a --source winget index download that can silently time-out and return nothing.
+    /// Returns all apps managed by WinGet, using two parallel strategies unioned together:
+    ///  1. "winget list --source winget"  — queries WinGet's own install records; the only
+    ///     reliable way to detect portable apps (e.g. Rufus) that have no ARP entry.
+    ///  2. "winget list" + Source=="winget" filter — works when the source-index download
+    ///     for strategy 1 contends with the concurrent upgrade check and returns empty.
+    /// Taking the union means we survive both failure modes.
     /// </summary>
     public static async Task<List<WinGetEntry>> GetWinGetManagedAsync(CancellationToken ct = default)
     {
-        var output = await RunWinGetAsync("list --accept-source-agreements --disable-interactivity", ct);
-        return ParseTable(output)
-            .Where(e => e.Source.Equals("winget", StringComparison.OrdinalIgnoreCase))
+        var t1 = RunWinGetAsync("list --source winget --accept-source-agreements --disable-interactivity", ct);
+        var t2 = RunWinGetAsync("list --accept-source-agreements --disable-interactivity", ct);
+        await Task.WhenAll(t1, t2);
+
+        var fromSource = ParseTable(t1.Result);
+        var fromFilter = ParseTable(t2.Result)
+            .Where(e => e.Source.Equals("winget", StringComparison.OrdinalIgnoreCase));
+
+        // Union both; prefer entries from the --source winget result (has richer metadata)
+        return fromSource
+            .Concat(fromFilter)
+            .GroupBy(e => e.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
             .ToList();
     }
 
