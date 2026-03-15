@@ -2,6 +2,8 @@
 
 A graphical WinGet-based package manager for Windows that lives in your system tray, keeps your apps up to date, and makes reinstalling a new machine effortless.
 
+![BaumLaunch screenshot](docs/screenshot.png)
+
 ---
 ****
 
