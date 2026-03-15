@@ -633,6 +633,13 @@ public sealed class MainForm : Form
             // For fresh installs AvailableVersion is null; use a non-null placeholder so
             // IsInstalled flips to true immediately while the background re-check runs.
             entry.InstalledVersion = entry.AvailableVersion ?? entry.InstalledVersion ?? "installed";
+            // Persist so future checks can recognise this as WinGet-managed even when
+            // "winget list" is inconsistent (e.g. portable apps like Rufus).
+            if (!_settings.KnownWinGetIds.Contains(entry.WinGetId, StringComparer.OrdinalIgnoreCase))
+            {
+                _settings.KnownWinGetIds.Add(entry.WinGetId);
+                _settings.Save();
+            }
         }
         RefreshRow(entry);
 
@@ -739,6 +746,9 @@ public sealed class MainForm : Form
                     // Installed and managed by WinGet
                     entry.InstalledVersion = inst.InstalledVersion;
                     entry.IsWinGetManaged  = true;
+                    // Persist so we can survive future winget list inconsistencies
+                    if (!_settings.KnownWinGetIds.Contains(entry.WinGetId, StringComparer.OrdinalIgnoreCase))
+                        _settings.KnownWinGetIds.Add(entry.WinGetId);
 
                     if (upgradableMap.TryGetValue(entry.WinGetId, out var upg) && !string.IsNullOrWhiteSpace(upg.AvailableVersion))
                     {
@@ -763,15 +773,31 @@ public sealed class MainForm : Form
                 {
                     // Pass 2: check ARP registry — matches by DisplayName or ArpNameHint substring
                     var arpMatch = FindInArp(arpApps, entry);
+                    bool knownManaged = _settings.KnownWinGetIds
+                        .Contains(entry.WinGetId, StringComparer.OrdinalIgnoreCase);
                     if (arpMatch.HasValue)
                     {
                         entry.InstalledVersion = arpMatch.Value.Version;
-                        entry.IsWinGetManaged  = false;
                         entry.AvailableVersion = null;
-                        entry.Status           = AppStatus.NotManaged;
+                        if (knownManaged)
+                        {
+                            // winget list was inconsistent — app still installed, keep as WinGet-managed
+                            entry.IsWinGetManaged = true;
+                            entry.Status          = AppStatus.UpToDate;
+                        }
+                        else
+                        {
+                            entry.IsWinGetManaged = false;
+                            entry.Status          = AppStatus.NotManaged;
+                        }
                     }
                     else
                     {
+                        // Not in ARP either — app was uninstalled; remove from known set
+                        if (knownManaged)
+                        {
+                            _settings.KnownWinGetIds.Remove(entry.WinGetId);
+                        }
                         entry.IsWinGetManaged  = false;
                         entry.InstalledVersion = null;
                         entry.AvailableVersion = null;
@@ -779,6 +805,8 @@ public sealed class MainForm : Form
                     }
                 }
             }
+
+            _settings.Save(); // persist any KnownWinGetIds changes accumulated in the loop
 
             _lastChecked = DateTime.Now;
             SafeInvoke(() =>

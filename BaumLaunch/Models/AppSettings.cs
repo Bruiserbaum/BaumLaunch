@@ -11,6 +11,14 @@ public sealed class AppSettings
     /// <summary>Run a package status check immediately on startup.</summary>
     public bool CheckOnStartup   { get; set; } = true;
 
+    /// <summary>
+    /// Package IDs we have successfully installed or switched to WinGet.
+    /// Persisted so that if "winget list" is inconsistent (e.g. portable apps like Rufus),
+    /// we can still recognise the app as WinGet-managed as long as it is still installed.
+    /// Entries are removed automatically when the app is no longer found anywhere.
+    /// </summary>
+    public List<string> KnownWinGetIds { get; set; } = new();
+
     // ── Scheduled auto-update ─────────────────────────────────────────────────
     public bool   AutoUpdateEnabled    { get; set; } = false;
     /// <summary>"Weekly" or "Monthly"</summary>
