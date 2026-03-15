@@ -1,4 +1,4 @@
-# BaumLaunch
+﻿# BaumLaunch
 
 A graphical WinGet-based package manager for Windows that lives in your system tray, keeps your apps up to date, and makes reinstalling a new machine effortless.
 
@@ -9,33 +9,33 @@ A graphical WinGet-based package manager for Windows that lives in your system t
 ## Features
 
 ### Package Management
-- **Curated app catalog** — 59 hand-picked applications across 9 categories, all sourced from the official WinGet repository
-- **Install & Switch to WinGet** — install apps you don't have, or switch existing installs to WinGet management with a single click
-- **Update All** — one button to silently update every outdated WinGet-managed app at once
-- **Live status badges** — each app shows whether it is Up to Date, Update Available, Not Installed, or Not via WinGet
-- **Reliable WinGet detection** — app IDs confirmed as WinGet-managed are persisted locally so apps (like Rufus) don't incorrectly revert to "Not via WinGet" between checks
+- **Curated app catalog** â€” 59 hand-picked applications across 9 categories, all sourced from the official WinGet repository
+- **Install & Switch to WinGet** â€” install apps you don't have, or switch existing installs to WinGet management with a single click
+- **Update All** â€” one button to silently update every outdated WinGet-managed app at once
+- **Live status badges** â€” each app shows whether it is Up to Date, Update Available, Not Installed, or Not via WinGet
+- **Reliable WinGet detection** â€” app IDs confirmed as WinGet-managed are persisted locally so apps (like Rufus) don't incorrectly revert to "Not via WinGet" between checks
 
 ### Search & Filter
-- **Search bar** — instantly filter apps by name or category as you type
-- **Category tabs** — All, AI Tools, Browsers, Runtimes, Dev Tools, Media & Tools, Game Launchers, Communication, System Tools
-- **⬆ Updates tab** — shows all WinGet-managed apps with updates sorted to the top; badge updates dynamically with the count
+- **Search bar** â€” instantly filter apps by name or category as you type
+- **Category tabs** â€” All, AI Tools, Browsers, Runtimes, Dev Tools, Media & Tools, Game Launchers, Communication, System Tools
+- **â¬† Updates tab** â€” shows all WinGet-managed apps with updates sorted to the top; badge updates dynamically with the count
 
 ### System Tray
-- **Runs silently in the background** — minimizes to the system tray instead of closing
+- **Runs silently in the background** â€” minimizes to the system tray instead of closing
 - **Tray icon** changes colour when updates are available
-- **Periodic update checks** — automatically scans for available updates on a configurable interval (default: every 6 hours)
-- **Tray context menu** — Open, Check for Updates, Update All, Settings, Exit
+- **Periodic update checks** â€” automatically scans for available updates on a configurable interval (default: every 6 hours)
+- **Tray context menu** â€” Open, Check for Updates, Update All, Settings, Exit
 
 ### Scheduled Auto-Update
-- **Silent scheduled updates** — optionally run `winget upgrade --all` automatically on a set schedule
-- **Weekly or Monthly** — pick the day of the week or day of the month
-- **Custom time** — set the hour and minute the update fires
+- **Silent scheduled updates** â€” optionally run `winget upgrade --all` automatically on a set schedule
+- **Weekly or Monthly** â€” pick the day of the week or day of the month
+- **Custom time** â€” set the hour and minute the update fires
 - **Balloon notification** when the scheduled update starts and completes
 
 ### Setup Profiles
-- **Export your setup** — check the apps you want, export your selection to a JSON profile file
-- **Import on a new machine** — import a profile after a clean Windows install to instantly know what to reinstall
-- **Portable profiles** — save to OneDrive, USB, or share with teammates
+- **Export your setup** â€” check the apps you want, export your selection to a JSON profile file
+- **Import on a new machine** â€” import a profile after a clean Windows install to instantly know what to reinstall
+- **Portable profiles** â€” save to OneDrive, USB, or share with teammates
 
 ---
 
@@ -59,14 +59,14 @@ A graphical WinGet-based package manager for Windows that lives in your system t
 - Windows 11 (22H2 / build 22621 or later)
 - [WinGet](https://learn.microsoft.com/windows/package-manager/winget/) (included with Windows 11 by default)
 
-No .NET runtime install required — the app is self-contained.
+No .NET runtime install required â€” the app is self-contained.
 
 ---
 
 ## Installation
 
 1. Download `BaumLaunch-Setup-x.x.x.exe` from the [Releases](../../releases) page
-2. Run the installer — no admin rights required (per-user install)
+2. Run the installer â€” no admin rights required (per-user install)
 3. Optionally enable **Start with Windows** during setup
 4. BaumLaunch will open and scan your installed apps automatically
 
@@ -87,7 +87,7 @@ Click **Update All** in the toolbar to update every app that has an available up
 Shows all apps currently managed by WinGet. Apps with available updates appear at the top. The tab badge shows the update count.
 
 ### Scheduled auto-updates
-Open **Settings** → **Scheduled Auto-Update**, enable it, pick a schedule (Weekly / Monthly), choose the day and time, and save. BaumLaunch will silently run `winget upgrade --all` at that time and notify you via a tray balloon.
+Open **Settings** â†’ **Scheduled Auto-Update**, enable it, pick a schedule (Weekly / Monthly), choose the day and time, and save. BaumLaunch will silently run `winget upgrade --all` at that time and notify you via a tray balloon.
 
 ### Exporting a profile
 1. Check the apps you want in your profile
@@ -97,7 +97,7 @@ Open **Settings** → **Scheduled Auto-Update**, enable it, pick a schedule (Wee
 ### Importing a profile
 1. Click **Import Profile**
 2. Select your previously exported `.json` file
-3. Apps in the profile are checked automatically — install any that are missing
+3. Apps in the profile are checked automatically â€” install any that are missing
 
 ---
 
@@ -134,4 +134,18 @@ Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer.
 
 ## Related Projects
 
-- [BaumDash](https://github.com/Bruiserbaum/BaumDash) — Audio mixer, Discord integration, media controls, and smart home dashboard for Windows
+- [BaumDash](https://github.com/Bruiserbaum/BaumDash) â€” Audio mixer, Discord integration, media controls, and smart home dashboard for Windows
+
+---
+
+## License and Project Status
+
+This repository is a personal project shared publicly for learning, reference, portfolio, and experimentation purposes.
+
+Development may include AI-assisted ideation, drafting, refactoring, or code generation. All code and content published here were reviewed, selected, and curated before release.
+
+This project is licensed under the Apache License 2.0. See the LICENSE file for details.
+
+Unless explicitly stated otherwise, this repository is provided as-is, without warranty, support obligation, or guarantee of suitability for production use.
+
+Any third-party libraries, assets, icons, fonts, models, or dependencies used by this project remain subject to their own licenses and terms.
