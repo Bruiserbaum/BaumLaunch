@@ -7,9 +7,11 @@ namespace BaumLaunch;
 public sealed class MainForm : Form
 {
     // ── Data ────────────────────────────────────────────────────────────────
-    private List<AppEntry> _entries = AppCatalog.GetAll();
+    private List<AppEntry>     _entries    = AppCatalog.GetAll();
+    private List<BaumAppEntry> _baumApps   = BaumAppService.GetCatalog();
     private string _activeCategory  = "All";
     private bool   _isChecking      = false;
+    private bool   _isBaumChecking  = false;
     private DateTime _lastChecked   = DateTime.MinValue;
     private bool   _exitRequested   = false;
     private AppSettings _settings   = AppSettings.Load();
@@ -29,6 +31,7 @@ public sealed class MainForm : Form
     private readonly Panel      _searchBar;
     private readonly Panel      _statusBar;
     private readonly Panel      _scrollPanel;
+    private readonly Panel      _baumAppsPanel;
     private readonly Panel      _bottomBar;
 
     // ── Status bar labels ────────────────────────────────────────────────────
@@ -45,6 +48,9 @@ public sealed class MainForm : Form
     private readonly Button _btnImport;
     private readonly Button _btnCheckNow;
     private readonly Button _btnSettings;
+    // Baum Apps toolbar
+    private readonly Button _btnCheckBaumNow;
+    private readonly Button _btnUpdateAllBaum;
 
     // ── Filter buttons & search ───────────────────────────────────────────────
     private readonly List<Button> _filterButtons = new();
@@ -131,12 +137,13 @@ public sealed class MainForm : Form
             e.Graphics.DrawLine(pen, 0, _filterBar.Height - 1, _filterBar.Width, _filterBar.Height - 1);
         };
 
-        string[] categories = { "All", "AI Tools", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools", "WinGet Updates" };
+        string[] categories = { "All", "AI Tools", "Browsers", "Runtimes", "Dev Tools", "Media & Tools", "Game Launchers", "Communication", "System Tools", "WinGet Updates", "Baum Apps" };
         int bx = 6;
         foreach (var cat in categories)
         {
             bool isUpdatesTab = cat == "WinGet Updates";
-            string btnText = isUpdatesTab ? "⬆ Updates" : cat;
+            bool isBaumTab    = cat == "Baum Apps";
+            string btnText = isUpdatesTab ? "⬆ Updates" : isBaumTab ? "⚙ Baum Apps" : cat;
             // Measure with the bold (active) font — it's wider, so switching fonts never clips the text
             int btnW = TextRenderer.MeasureText(btnText, AppTheme.FontBold).Width + 22;
             var btn = new Button
@@ -154,6 +161,7 @@ public sealed class MainForm : Form
             };
             btn.FlatAppearance.BorderSize  = 0;
             btn.FlatAppearance.MouseOverBackColor = AppTheme.BgCard;
+            btn.ForeColor = (isUpdatesTab || isBaumTab) ? AppTheme.Accent : AppTheme.TextSecondary;
             btn.Click += FilterButton_Click;
             _filterButtons.Add(btn);
             _filterBar.Controls.Add(btn);
@@ -285,6 +293,8 @@ public sealed class MainForm : Form
         _btnImport         = MakeToolbarButton("Import Profile", AppTheme.BgCard,  AppTheme.TextSecondary);
         _btnCheckNow       = MakeToolbarButton("Check Now",      AppTheme.Accent,  AppTheme.TextPrimary);
         _btnSettings       = MakeToolbarButton("⚙ Settings",    AppTheme.BgCard,  AppTheme.TextSecondary);
+        _btnCheckBaumNow   = MakeToolbarButton("Check GitHub",   AppTheme.Accent,  AppTheme.TextPrimary);
+        _btnUpdateAllBaum  = MakeToolbarButton("Update All",     AppTheme.Warning, Color.FromArgb(30, 30, 30));
 
         _btnSelectAll.Click       += (_, _) => { foreach (var e in _entries) e.IsSelected = true;  RebuildRows(); };
         _btnDeselectAll.Click     += (_, _) => { foreach (var e in _entries) e.IsSelected = false; RebuildRows(); };
@@ -295,6 +305,8 @@ public sealed class MainForm : Form
         _btnImport.Click          += ImportProfile_Click;
         _btnCheckNow.Click        += async (_, _) => await RefreshStatusAsync();
         _btnSettings.Click        += (_, _) => OpenSettings();
+        _btnCheckBaumNow.Click    += async (_, _) => await RefreshBaumAppsAsync();
+        _btnUpdateAllBaum.Click   += async (_, _) => await RunBatchBaumAsync();
 
         // Layout bottom bar left-to-right
         LayoutBottomBar();
@@ -308,7 +320,17 @@ public sealed class MainForm : Form
             BackColor   = AppTheme.BgMain,
         };
 
+        // ── Baum Apps panel (shown instead of _scrollPanel when "Baum Apps" tab active) ──
+        _baumAppsPanel = new Panel
+        {
+            Dock        = DockStyle.Fill,
+            AutoScroll  = true,
+            BackColor   = AppTheme.BgMain,
+            Visible     = false,
+        };
+
         // Order matters for DockStyle.Top stacking (bottom → top order of adding)
+        Controls.Add(_baumAppsPanel);
         Controls.Add(_scrollPanel);
         Controls.Add(_bottomBar);
         Controls.Add(_statusBar);
@@ -362,6 +384,7 @@ public sealed class MainForm : Form
 
         // Activate correct filter button
         UpdateFilterButtons();
+        UpdateBottomBarVisibility();
 
         Load += async (_, _) =>
         {
@@ -521,9 +544,27 @@ public sealed class MainForm : Form
     {
         if (sender is Button btn && btn.Tag is string cat)
         {
+            bool wasBaum = _activeCategory == "Baum Apps";
+            bool isBaum  = cat == "Baum Apps";
             _activeCategory = cat;
             UpdateFilterButtons();
-            RebuildRows();
+
+            if (isBaum)
+            {
+                _scrollPanel.Visible    = false;
+                _baumAppsPanel.Visible  = true;
+                RebuildBaumRows();
+                // Auto-check on first visit if not yet checked
+                if (_baumApps.All(a => a.Status == BaumAppStatus.Unknown))
+                    _ = Task.Run(async () => await SafeInvoke(RefreshBaumAppsAsync));
+            }
+            else
+            {
+                _baumAppsPanel.Visible = false;
+                _scrollPanel.Visible   = true;
+                RebuildRows();
+            }
+            UpdateBottomBarVisibility();
         }
     }
 
@@ -531,8 +572,9 @@ public sealed class MainForm : Form
     {
         foreach (var btn in _filterButtons)
         {
-            bool active = btn.Tag is string t && t == _activeCategory;
-            btn.ForeColor = active ? AppTheme.Accent : AppTheme.TextSecondary;
+            bool active   = btn.Tag is string t && t == _activeCategory;
+            bool isAccent = btn.Tag is string tag && (tag == "WinGet Updates" || tag == "Baum Apps");
+            btn.ForeColor = active ? AppTheme.Accent : (isAccent ? Color.FromArgb(120, 150, 220) : AppTheme.TextSecondary);
             btn.Font      = active ? AppTheme.FontBold : AppTheme.FontSmall;
         }
     }
@@ -1075,9 +1117,18 @@ public sealed class MainForm : Form
             _bottomBar.Controls.AddRange(new Control[] {
                 _btnSelectAll, _btnDeselectAll,
                 _btnInstallSelected, _btnUpdateSelected, _btnUpdateAll,
-                _btnExport, _btnImport, _btnCheckNow, _btnSettings
+                _btnExport, _btnImport, _btnCheckNow, _btnSettings,
+                _btnCheckBaumNow, _btnUpdateAllBaum,
             });
         }
+
+        // Also lay out Baum buttons (pinned left, similar position)
+        int bbx = 8;
+        _btnCheckBaumNow.Size     = new Size(110, 30);
+        _btnCheckBaumNow.Location = new Point(bbx, 10);
+        bbx += _btnCheckBaumNow.Width + 6;
+        _btnUpdateAllBaum.Size     = new Size(110, 30);
+        _btnUpdateAllBaum.Location = new Point(bbx, 10);
     }
 
     private static void PlaceBtn(Button btn, ref int x, int y, int gap)
@@ -1281,5 +1332,162 @@ public sealed class MainForm : Form
         if (IsDisposed) return;
         if (InvokeRequired) await (Task)Invoke(action)!;
         else await action();
+    }
+
+    // ── Bottom bar Baum visibility ────────────────────────────────────────────────
+    private void UpdateBottomBarVisibility()
+    {
+        bool isBaum = _activeCategory == "Baum Apps";
+
+        // WinGet toolbar buttons
+        _btnSelectAll.Visible       = !isBaum;
+        _btnDeselectAll.Visible     = !isBaum;
+        _btnInstallSelected.Visible = !isBaum;
+        _btnUpdateSelected.Visible  = !isBaum;
+        _btnUpdateAll.Visible       = !isBaum;
+        _btnExport.Visible          = !isBaum;
+        _btnImport.Visible          = !isBaum;
+        _btnCheckNow.Visible        = !isBaum;
+
+        // Baum toolbar buttons
+        _btnCheckBaumNow.Visible  = isBaum;
+        _btnUpdateAllBaum.Visible = isBaum;
+    }
+
+    // ── Baum Apps panel ───────────────────────────────────────────────────────────
+
+    private void RebuildBaumRows()
+    {
+        _baumAppsPanel.SuspendLayout();
+
+        var oldRows = _baumAppsPanel.Controls.OfType<BaumAppRow>().ToList();
+        foreach (var r in oldRows)
+        {
+            r.ActionClicked -= BaumRow_ActionClicked;
+            _baumAppsPanel.Controls.Remove(r);
+            r.Dispose();
+        }
+
+        // Header label
+        var existing = _baumAppsPanel.Controls.OfType<Label>().ToList();
+        foreach (var l in existing) { _baumAppsPanel.Controls.Remove(l); l.Dispose(); }
+
+        var hdr = new Label
+        {
+            Dock      = DockStyle.Top,
+            Height    = 36,
+            Font      = AppTheme.FontHeader,
+            ForeColor = AppTheme.TextSecondary,
+            BackColor = AppTheme.BgPanel,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding   = new Padding(14, 0, 0, 0),
+            Text      = $"Baum Apps  —  {_baumApps.Count} apps",
+        };
+        hdr.Paint += (_, e) =>
+        {
+            using var pen = new Pen(AppTheme.Border, 1);
+            e.Graphics.DrawLine(pen, 0, hdr.Height - 1, hdr.Width, hdr.Height - 1);
+        };
+
+        var rows = _baumApps.Select((a, i) =>
+        {
+            var row = new BaumAppRow(a) { RowIndex = i, Tag = a };
+            row.ActionClicked += BaumRow_ActionClicked;
+            return row;
+        }).ToList();
+
+        // Add in reverse (DockStyle.Top stacks bottom-up)
+        for (int i = rows.Count - 1; i >= 0; i--)
+            _baumAppsPanel.Controls.Add(rows[i]);
+
+        _baumAppsPanel.Controls.Add(hdr);
+        _baumAppsPanel.ResumeLayout(true);
+    }
+
+    private void RefreshBaumRow(BaumAppEntry app)
+    {
+        var row = _baumAppsPanel.Controls.OfType<BaumAppRow>()
+            .FirstOrDefault(r => r.Tag is BaumAppEntry a && a.RepoName == app.RepoName);
+        row?.Refresh(app);
+    }
+
+    private async void BaumRow_ActionClicked(object? sender, BaumAppEntry app)
+    {
+        await RunBaumAppAsync(app);
+    }
+
+    private async Task RefreshBaumAppsAsync()
+    {
+        if (_isBaumChecking) return;
+        _isBaumChecking = true;
+        _btnCheckBaumNow.Enabled = false;
+        _lblChecking.Text    = "Checking Baum Apps...";
+        _lblChecking.Visible = true;
+
+        try
+        {
+            var tasks = _baumApps.Select(a => BaumAppService.CheckAsync(a));
+            await Task.WhenAll(tasks);
+
+            SafeInvoke(() =>
+            {
+                RebuildBaumRows();
+                int updates = _baumApps.Count(a => a.Status == BaumAppStatus.UpdateAvailable);
+                _btnUpdateAllBaum.Text    = $"Update All ({updates})";
+                _btnUpdateAllBaum.Visible = true;
+            });
+        }
+        finally
+        {
+            _isBaumChecking = false;
+            SafeInvoke(() =>
+            {
+                _btnCheckBaumNow.Enabled = true;
+                _lblChecking.Visible     = false;
+            });
+        }
+    }
+
+    private async Task RunBaumAppAsync(BaumAppEntry app)
+    {
+        if (app.DownloadUrl == null)
+        {
+            // Need to check first
+            await BaumAppService.CheckAsync(app);
+            SafeInvoke(() => RefreshBaumRow(app));
+            if (app.DownloadUrl == null)
+            {
+                MessageBox.Show($"No installer found for {app.DisplayName}.", "BaumLaunch",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+        }
+
+        await BaumAppService.InstallOrUpdateAsync(
+            app,
+            onProgress: pct => SafeInvoke(() => RefreshBaumRow(app)),
+            onComplete: () => SafeInvoke(() =>
+            {
+                RefreshBaumRow(app);
+                int updates = _baumApps.Count(a => a.Status == BaumAppStatus.UpdateAvailable);
+                _btnUpdateAllBaum.Text = $"Update All ({updates})";
+            }));
+    }
+
+    private async Task RunBatchBaumAsync()
+    {
+        var targets = _baumApps
+            .Where(a => a.Status is BaumAppStatus.UpdateAvailable or BaumAppStatus.NotInstalled)
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            MessageBox.Show("All Baum apps are up to date.", "BaumLaunch",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        foreach (var app in targets)
+            await RunBaumAppAsync(app);
     }
 }
