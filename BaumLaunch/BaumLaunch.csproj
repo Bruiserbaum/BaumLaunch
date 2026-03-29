@@ -6,8 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <Version>1.17.8</Version>
+    <Version>1.17.11</Version>
     <AssemblyName>BaumLaunch</AssemblyName>
     <RootNamespace>BaumLaunch</RootNamespace>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <AssemblyTitle>BaumLaunch</AssemblyTitle>
+    <Product>BaumLaunch</Product>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\app.ico" />
+  </ItemGroup>
 </Project>

@@ -332,9 +332,11 @@ public sealed class MainForm : Form
         ctxMenu.Items.Add(new ToolStripSeparator());
         ctxMenu.Items.Add("Exit",                null, (_, _) => { _exitRequested = true; Application.Exit(); });
 
-        // Use the same generated icon everywhere: tray, taskbar, alt-tab, title bar
+        // Form icon: use the embedded app.ico from the exe
+        this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+
+        // Tray icon: keep generated so it can show update-count badge
         var appIcon = GenerateTrayIcon(false);
-        this.Icon   = appIcon;
 
         _trayIcon = new NotifyIcon
         {
@@ -873,43 +875,50 @@ public sealed class MainForm : Form
     // ── Tray icon generation ────────────────────────────────────────────────────
     private static Icon GenerateTrayIcon(bool hasUpdates)
     {
-        // Use 32×32 for crisp rendering; Windows scales it to tray size
-        using var bmp = new Bitmap(32, 32);
+        using var bmp = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
 
-            // Dark blue-black background badge
-            using var bgBrush  = new SolidBrush(Color.FromArgb(12, 25, 65));
-            using var bgPen    = new Pen(Color.FromArgb(50, 90, 180), 1.5f);
-            using var bgPath   = new System.Drawing.Drawing2D.GraphicsPath();
-            bgPath.AddArc(1, 1, 10, 10, 180, 90);
-            bgPath.AddArc(21, 1, 10, 10, 270, 90);
-            bgPath.AddArc(21, 21, 10, 10, 0, 90);
-            bgPath.AddArc(1, 21, 10, 10, 90, 90);
+            const float s  = 32f;
+            const float cx = s / 2f;
+            const float bw = s * 0.22f;
+            const float bodyTop    = s * 0.42f;
+            const float bodyBottom = s * 0.72f;
+
+            // Rounded-rect background
+            using var bgBrush = new SolidBrush(Color.FromArgb(255, 18, 18, 26));
+            using var bgPath  = new System.Drawing.Drawing2D.GraphicsPath();
+            const int rr = (int)(s * 0.19f);
+            bgPath.AddArc(0, 0, rr * 2, rr * 2, 180, 90);
+            bgPath.AddArc(32 - rr * 2, 0, rr * 2, rr * 2, 270, 90);
+            bgPath.AddArc(32 - rr * 2, 32 - rr * 2, rr * 2, rr * 2, 0, 90);
+            bgPath.AddArc(0, 32 - rr * 2, rr * 2, rr * 2, 90, 90);
             bgPath.CloseFigure();
             g.FillPath(bgBrush, bgPath);
-            g.DrawPath(bgPen,   bgPath);
 
-            // White tree
-            using var treeBrush  = new SolidBrush(Color.White);
-            using var trunkBrush = new SolidBrush(Color.FromArgb(180, 150, 90));
-            g.FillPolygon(treeBrush, new PointF[] { new(16, 3), new(10, 12), new(22, 12) });
-            g.FillPolygon(treeBrush, new PointF[] { new(16, 8), new(6, 20),  new(26, 20) });
-            g.FillRectangle(trunkBrush, 13, 20, 6, 5);
+            // Rocket body — accent blue
+            using var aBrush = new SolidBrush(Color.FromArgb(255, 78, 131, 253));
+            g.FillPolygon(aBrush, new PointF[] { new(cx, s * 0.18f), new(cx - bw, bodyTop),   new(cx + bw, bodyTop) });   // nose
+            g.FillRectangle(aBrush, cx - bw, bodyTop, bw * 2, bodyBottom - bodyTop);                                       // body
+            g.FillPolygon(aBrush, new PointF[] { new(cx - bw, s * 0.52f), new(cx - bw * 2f, bodyBottom), new(cx - bw, bodyBottom) }); // left wing
+            g.FillPolygon(aBrush, new PointF[] { new(cx + bw, s * 0.52f), new(cx + bw, bodyBottom),       new(cx + bw * 2f, bodyBottom) }); // right wing
 
-            // Accent-blue flames
-            var flameColor = hasUpdates ? AppTheme.Warning : AppTheme.Accent;
-            using var flameBrush = new SolidBrush(flameColor);
-            g.FillEllipse(flameBrush, 10, 24, 4, 6);
-            g.FillEllipse(flameBrush, 14, 24, 4, 7);
-            g.FillEllipse(flameBrush, 18, 24, 4, 6);
+            // Flame
+            using var flameBrush = new SolidBrush(Color.FromArgb(255, 255, 165, 30));
+            g.FillPolygon(flameBrush, new PointF[] { new(cx, s * 0.88f), new(cx - bw * 0.7f, bodyBottom), new(cx + bw * 0.7f, bodyBottom) });
 
-            // Orange dot indicator when updates are available
+            // Porthole
+            using var winBrush = new SolidBrush(Color.FromArgb(200, 230, 230, 240));
+            const float wr = s * 0.09f;
+            g.FillEllipse(winBrush, cx - wr, s * 0.52f, wr * 2, wr * 2);
+
+            // Orange update-available badge
             if (hasUpdates)
             {
                 using var dotBrush = new SolidBrush(AppTheme.Warning);
-                using var dotPen   = new Pen(Color.FromArgb(12, 25, 65), 1.5f);
+                using var dotPen   = new Pen(Color.FromArgb(18, 18, 26), 1.5f);
                 g.FillEllipse(dotBrush, 22, 1, 9, 9);
                 g.DrawEllipse(dotPen,   22, 1, 9, 9);
             }
