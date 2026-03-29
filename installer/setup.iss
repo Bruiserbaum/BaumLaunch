@@ -1,6 +1,6 @@
 #define AppName      "BaumLaunch"
-#define AppVersion   "1.17.8"
-#define AppVersionFull "1.17.8"
+#define AppVersion   "1.17.12"
+#define AppVersionFull "1.17.12"
 #define AppPublisher "Bnuss"
 #define AppExeName   "BaumLaunch.exe"
 #define PublishDir   "..\BaumLaunch\bin\Release\net8.0-windows10.0.22621.0\win-x64\publish"
@@ -14,6 +14,8 @@ DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=output
 OutputBaseFilename=BaumLaunch-Setup-{#AppVersionFull}
+SetupIconFile=..\BaumLaunch\Resources\app.ico
+UninstallDisplayIcon={app}\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -33,6 +35,7 @@ Name: "startup"; Description: "Start BaumLaunch with Windows"; GroupDescription:
 [Files]
 Source: "{#PublishDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "{#PublishDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\BaumLaunch\Resources\app.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
