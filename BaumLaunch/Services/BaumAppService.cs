@@ -54,6 +54,14 @@ public static class BaumAppService
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs", "BaumKeyGenerator", "BaumKeyGenerator.exe"),
         },
+        new BaumAppEntry
+        {
+            RepoName    = "BaumConfigure",
+            DisplayName = "BaumConfigure",
+            ExePath     = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs", "BaumConfigure", "BaumConfigure.exe"),
+        },
     ];
 
     /// <summary>
